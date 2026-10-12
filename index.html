@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>太平洋战线 · 阵容计算室</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="#"><span class="brand-icon" aria-hidden="true">⚓</span><span>太平洋战线<small>PACIFIC FRONT / TACTICAL DESK</small></span></a>
+    <span class="version">本地计算 <span class="dot"></span> 多波行动版</span>
+  </header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">部署之前，先算一步</p><h1>阵容计算室<span>01</span></h1><p>录入敌军，挑选可用舰队，让每张卡牌站在合适的位置。</p></div><button type="button" id="demo" class="quiet">载入示例 ↗</button></div>
+    <form id="planner" novalidate>
+      <div class="workspace">
+        <div class="main-column">
+          <section class="panel enemies-panel" aria-labelledby="enemy-heading">
+            <div class="section-heading"><div><span class="step">01</span><h2 id="enemy-heading">行动敌军</h2><span class="count" id="wave-count">1 / 6波</span></div></div>
+            <p class="section-note">最多6波，每波4至20个敌人（4的倍数）。每4个为一组，方向效果和战场条件分别绑定到具体波次与组。</p>
+            <p class="section-note" id="migration-note" hidden>旧版共有条件已复制到各已有组，请按实际战场逐组核对。</p>
+            <div id="capture-tools" class="capture-tools">
+              <div class="capture-toolbar"><label>抓取填入<select id="capture-target" aria-label="抓取目标组"></select></label><button type="button" id="capture-current" disabled>抓取当前据点</button><button type="button" id="capture-undo" disabled>撤销上次抓取</button></div>
+              <p id="capture-connection" class="capture-status">游戏页面未连接</p>
+              <p class="capture-note">阶段对应波次，每个据点对应一组。按全胜规划，只录入区域条件，忽略带入和指定；卡牌、生命和库存仍由你设置。</p>
+              <p id="capture-feedback" class="capture-status" role="status" aria-live="polite"></p>
+              <details><summary>首次连接与离线导入</summary><ol><li>先设置波次、每波敌军数量及自己的资源。</li><li>复制采集脚本，在游戏配队页面打开开发者工具“控制台”，粘贴并运行。脚本含本次本机服务的配对码。</li><li>点击游戏页右下角“连接／打开本地求解器”。通过本机服务连接，切换标签页或刷新求解器不影响连接。游戏页保持打开。</li><li>你手动切换据点，在求解器选择目标组并抓取。成功后自动选中下一组。游戏整页刷新或本机服务重启后，重新复制并运行脚本。</li></ol>
+                <div class="capture-actions"><button type="button" id="capture-copy-script">复制游戏页采集脚本</button><button type="button" id="capture-file-button">导入 HTML/TXT</button><input type="file" id="capture-file" accept=".html,.htm,.txt,text/html,text/plain" hidden></div>
+                <textarea id="capture-script" aria-label="游戏页采集脚本，可手动全选复制" readonly spellcheck="false" hidden></textarea>
+                <p class="capture-note">游戏页需要访问本机127.0.0.1的求解器服务；浏览器可能询问本地网络访问权限。无法连接时可导入据点HTML/TXT。支持区域属性下降和敌方战力提升；请在敌军未受我方减益时采集，未知条件会提示并保留原输入。</p>
+              </details>
+            </div>
+            <div class="wave-toolbar"><button type="button" id="add-wave">＋添加一波</button><button type="button" id="remove-wave">移除最后一波</button></div>
+            <div id="enemies"></div>
+          </section>
+          <section class="panel" aria-labelledby="cards-heading">
+            <div class="section-heading"><div><span class="step">02</span><h2 id="cards-heading">我的舰队</h2><span class="count" id="selected-count">0 / 30</span></div><div class="actions"><button type="button" id="select-all">全选</button><button type="button" id="clear-cards">清空</button></div></div>
+            <div class="fleet-toolbar"><div id="type-filters" class="tabs" role="group" aria-label="筛选卡牌类型"><button type="button" class="active" data-type="all">全部</button><button type="button" data-type="aircraft">飞机</button><button type="button" data-type="battleship">战列舰</button><button type="button" data-type="cruiser">巡洋舰</button><button type="button" data-type="destroyer">驱逐舰</button></div><span class="muted">每种卡牌按一个单位计算</span></div>
+            <div id="cards" class="card-grid"></div>
+          </section>
+          <section class="panel inventory-panel" aria-labelledby="inventory-heading">
+            <div class="section-heading"><div><span class="step">03</span><h2 id="inventory-heading">道具库存</h2></div><span class="muted">每单位最多一灰＋一绿</span></div>
+            <p class="section-note">填入行动开始时的库存。规划时会逐组模拟消耗道具，实际输入不会被扣减。</p>
+            <div class="inventory-columns"><div><h3><span class="slot gray"></span>灰色 · 标准变项</h3><div id="standard-items"></div></div><div><h3><span class="slot green"></span>绿色 · 特殊变项</h3><div id="special-items"></div></div></div>
+          </section>
+        </div>
+        <aside class="side-column">
+          <section class="panel compute-panel" aria-labelledby="conditions-heading">
+            <div class="section-heading"><div><h2 id="conditions-heading">计算设置</h2></div></div>
+            <p class="section-note">战场条件在左侧各组内设置，仅影响对应组的我方单位。</p>
+            <p class="section-note">“无视战斗条件”已按实测支持在增益失效时继续向友方提供增益，并抵消增益、减益效果减少50%；绕过减益失效、舰种限制仍待实测。</p>
+            <details class="model-settings"><summary>计算规则与搜索设置</summary>
+              <p class="setting-note">同属性正向增幅按实测确认的方式加算。最低战力在属性结算后扣10点浮动。</p>
+              <label>本组条件减益与增幅<select id="global-stacking"><option value="multiply">减益单独乘算（默认）</option><option value="additive">减益加入同一倍率</option></select></label>
+              <label>数值取整<select id="rounding"><option value="conservative">我方向下、敌方向上取整</option><option value="none">保留小数</option></select></label>
+              <label class="setting-check"><input type="checkbox" id="allow-equal">战力相等也计入胜利</label>
+              <label class="setting-check"><input type="checkbox" id="revive">允许用回血道具救活零生命单位</label>
+              <label>有限搜索范围<select id="beam-width"><option value="300">快速</option><option value="900" selected>标准</option><option value="2400">更广</option></select></label>
+              <p class="setting-note">后续波次有失败时，会尝试在零生命之前提前回血；只有增加整场胜场才保留。取整、平局、全局减益的叠加及零生命恢复尚待游戏实测校准。结果按当前设置计算。</p>
+            </details>
+            <div class="compute-box"><p id="ready-summary">请选择你的可用卡牌</p><button type="submit" id="calculate" class="primary">开始计算 <span aria-hidden="true">→</span></button><button type="button" id="cancel" hidden>取消计算</button><p class="save-note">输入保存在此浏览器，下次继续使用。</p></div>
+          </section>
+          <div class="priority-note"><span>逐组计算优先级</span><ol><li>按当前模型击败更多敌人</li><li>先用灰色，优先保留绿色道具</li><li>再少用灰色道具和上阵单位</li><li>优先使用能打过的弱卡，保留强卡</li><li>以上相同时提高对位战力余量</li></ol><p>同等胜场时先少用绿色、再少用灰色，允许用两件灰色代替一件绿色。弱卡按满血最低战力衡量，胜负仍按生命、装备和方向效果结算。每波同一卡牌只上阵一次；上阵扣1格生命。</p></div>
+        </aside>
+      </div>
+    </form>
+    <section id="result-panel" class="panel result-panel" aria-live="polite" aria-busy="false" tabindex="-1"><div class="empty-result"><span aria-hidden="true">⌖</span><h2>等待你的作战情报</h2><p>填写敌军战力、弱点和可用卡牌，然后开始计算。</p></div></section>
+    <footer>30张卡牌 · 11种道具 <span>最多6波 / 120敌军 · 不自动操作游戏</span></footer>
+  </main>
+  <script src="game-capture.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

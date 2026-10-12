@@ -1,0 +1,29 @@
+{
+  "id": "image_5",
+  "kind": "public_transcription",
+  "note": "由已核对的游戏数据整理；原始截图及上传文件标识不随公开版分发。",
+  "cards": [
+    {
+      "id": "missouri",
+      "name": "USS密苏里",
+      "unit_type": "battleship",
+      "firepower": 80,
+      "survivability": 80,
+      "mobility": 40,
+      "power_min": 190,
+      "source_id": "image_5",
+      "source_row": 1,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front"
+        },
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_right"
+        }
+      ]
+    }
+  ]
+}

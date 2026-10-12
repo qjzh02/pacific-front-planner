@@ -1,0 +1,315 @@
+{
+  "id": "image_2",
+  "kind": "public_transcription",
+  "note": "由已核对的游戏数据整理；原始截图及上传文件标识不随公开版分发。",
+  "cards": [
+    {
+      "id": "new_orleans",
+      "name": "USS新奥尔良",
+      "unit_type": "cruiser",
+      "firepower": 45,
+      "survivability": 45,
+      "mobility": 50,
+      "power_min": 130,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "hobart",
+      "name": "HMAS霍巴特",
+      "unit_type": "cruiser",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 45,
+      "power_min": 95,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "buff_survivability",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_left"
+        }
+      ]
+    },
+    {
+      "id": "marblehead",
+      "name": "USS马布尔黑德",
+      "unit_type": "cruiser",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 40,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front"
+        },
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "de_ruyter",
+      "name": "H.R.MS.德·鲁伊特",
+      "unit_type": "cruiser",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 40,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "buff_mobility",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_left"
+        }
+      ]
+    },
+    {
+      "id": "laffey",
+      "name": "USS拉菲",
+      "unit_type": "destroyer",
+      "firepower": 55,
+      "survivability": 60,
+      "mobility": 65,
+      "power_min": 170,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "buff_survivability",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "johnston",
+      "name": "USS约翰斯顿",
+      "unit_type": "destroyer",
+      "firepower": 50,
+      "survivability": 60,
+      "mobility": 70,
+      "power_min": 170,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_left"
+        },
+        {
+          "type": "buff_survivability",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "kidd",
+      "name": "USS基德",
+      "unit_type": "destroyer",
+      "firepower": 45,
+      "survivability": 45,
+      "mobility": 60,
+      "power_min": 140,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_right"
+        },
+        {
+          "type": "buff_survivability",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "benson",
+      "name": "USS本森",
+      "unit_type": "destroyer",
+      "firepower": 40,
+      "survivability": 40,
+      "mobility": 60,
+      "power_min": 130,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "buff_mobility",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "le_triomphant",
+      "name": "凯旋",
+      "unit_type": "destroyer",
+      "firepower": 45,
+      "survivability": 30,
+      "mobility": 65,
+      "power_min": 130,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_left"
+        },
+        {
+          "type": "buff_mobility",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "hughes",
+      "name": "USS休斯",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 50,
+      "power_min": 100,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "farragut",
+      "name": "USS法拉格特",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 45,
+      "power_min": 95,
+      "source_id": "image_2",
+      "source_row": 3,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "arrow",
+      "name": "HMS箭",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 40,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 3,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front"
+        },
+        {
+          "type": "buff_survivability",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "john_d_ford",
+      "name": "USS约翰·D.·福特",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 20,
+      "mobility": 50,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 3,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "buff_survivability",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_left"
+        }
+      ]
+    },
+    {
+      "id": "vampire",
+      "name": "HMAS吸血鬼",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 20,
+      "mobility": 50,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 3,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_right"
+        },
+        {
+          "type": "buff_mobility",
+          "direction": "right"
+        }
+      ]
+    }
+  ]
+}

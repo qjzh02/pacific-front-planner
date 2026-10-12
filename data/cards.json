@@ -1,0 +1,840 @@
+{
+  "schema_version": 2,
+  "scope": "已整理的30张卡牌，不代表游戏全部卡牌；公开版仅保留文字数据来源记录。",
+  "sources": [
+    {
+      "id": "image_1",
+      "path": "sources/cards-01.json",
+      "original_filename": "cards-01.json"
+    },
+    {
+      "id": "image_2",
+      "path": "sources/cards-02.json",
+      "original_filename": "cards-02.json"
+    },
+    {
+      "id": "image_4",
+      "path": "sources/debuff-types.json",
+      "original_filename": "debuff-types.json"
+    },
+    {
+      "id": "image_5",
+      "path": "sources/cards-03.json",
+      "original_filename": "cards-03.json"
+    }
+  ],
+  "rules": {
+    "stat_order": [
+      "firepower",
+      "survivability",
+      "mobility"
+    ],
+    "recorded_power": "full_health_minimum",
+    "random_offset_min": -10,
+    "random_offset_max": 10,
+    "buff_multiplier": 1.3,
+    "debuff_multiplier": 0.8,
+    "debuff_stacking": "multiplicative",
+    "two_debuffs_multiplier": 0.64,
+    "battle_effect_reduction": {
+      "buff_bonus_rate_multiplier": 0.5,
+      "debuff_reduction_rate_multiplier": 0.5
+    },
+    "debuff_requires_matching_weakness": true,
+    "health_stat_multipliers": {
+      "3": 1.0,
+      "2": 0.9,
+      "1": 0.8,
+      "0": null
+    },
+    "health_loss_per_battle": 1,
+    "same_stage_unit_restriction": "one_stronghold_per_unit",
+    "new_operation_restores_health": true,
+    "enemy_above_own_minimum": "not_guaranteed_to_win",
+    "equal_power_outcome": null,
+    "buff_stacking": null,
+    "rounding": null,
+    "rounding_stage": null,
+    "out_of_bounds_effect": "no_target"
+  },
+  "rule_sources": {
+    "user_confirmed": [
+      "stat_order",
+      "recorded_power",
+      "buff_multiplier",
+      "debuff_multiplier",
+      "debuff_stacking",
+      "two_debuffs_multiplier",
+      "battle_effect_reduction",
+      "enemy_above_own_minimum"
+    ],
+    "in_game_rules_read": [
+      "random_offset_min",
+      "random_offset_max",
+      "debuff_requires_matching_weakness",
+      "health_stat_multipliers",
+      "health_loss_per_battle",
+      "same_stage_unit_restriction",
+      "new_operation_restores_health"
+    ],
+    "direction_convention": [
+      "out_of_bounds_effect"
+    ],
+    "user_confirmed_card_directions": {
+      "laffey": {
+        "debuff_ring_projectile": "front"
+      }
+    },
+    "unconfirmed": [
+      "equal_power_outcome",
+      "buff_stacking",
+      "rounding",
+      "rounding_stage"
+    ]
+  },
+  "effect_types": [
+    {
+      "id": "buff_firepower",
+      "kind": "buff",
+      "icon_label": "绿色准星",
+      "target_stat": "firepower",
+      "weakness_name": null,
+      "multiplier": 1.3,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "buff_survivability",
+      "kind": "buff",
+      "icon_label": "绿色盾牌",
+      "target_stat": "survivability",
+      "weakness_name": null,
+      "multiplier": 1.3,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "buff_mobility",
+      "kind": "buff",
+      "icon_label": "绿色三圆点",
+      "target_stat": "mobility",
+      "weakness_name": null,
+      "multiplier": 1.3,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_plane",
+      "kind": "debuff",
+      "icon_label": "红色飞机",
+      "target_stat": "total_power",
+      "weakness_name": "空中打击",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_vertical_lines",
+      "kind": "debuff",
+      "icon_label": "红色竖线",
+      "target_stat": "total_power",
+      "weakness_name": "防空火力",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_concentric_target",
+      "kind": "debuff",
+      "icon_label": "红色同心圆",
+      "target_stat": "total_power",
+      "weakness_name": "侦察性",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_single_shell",
+      "kind": "debuff",
+      "icon_label": "红色单弹",
+      "target_stat": "total_power",
+      "weakness_name": "重炮",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_three_shells",
+      "kind": "debuff",
+      "icon_label": "红色三弹",
+      "target_stat": "total_power",
+      "weakness_name": "速射炮",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_ring_projectile",
+      "kind": "debuff",
+      "icon_label": "红色弹体带圆环",
+      "target_stat": "total_power",
+      "weakness_name": "烟雾",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    }
+  ],
+  "cards": [
+    {
+      "id": "helldiver_essex",
+      "name": "HELLDIVER俯冲轰炸机／USS埃塞克斯",
+      "unit_type": "aircraft",
+      "firepower": 75,
+      "survivability": 30,
+      "mobility": 75,
+      "power_min": 170,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "buff_firepower",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_plane",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "corsair_essex",
+      "name": "CORSAIR战斗机／USS埃塞克斯",
+      "unit_type": "aircraft",
+      "firepower": 55,
+      "survivability": 30,
+      "mobility": 95,
+      "power_min": 170,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_plane",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "avenger_enterprise",
+      "name": "AVENGER鱼雷轰炸机／USS企业",
+      "unit_type": "aircraft",
+      "firepower": 60,
+      "survivability": 25,
+      "mobility": 60,
+      "power_min": 135,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_plane",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "hellcat_enterprise",
+      "name": "HELLCAT战斗机／USS企业",
+      "unit_type": "aircraft",
+      "firepower": 35,
+      "survivability": 25,
+      "mobility": 80,
+      "power_min": 130,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_plane",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "dauntless_saratoga",
+      "name": "DAUNTLESS俯冲轰炸机／USS萨拉托加",
+      "unit_type": "aircraft",
+      "firepower": 35,
+      "survivability": 20,
+      "mobility": 55,
+      "power_min": 100,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "debuff_plane",
+          "direction": "front"
+        },
+        {
+          "type": "buff_firepower",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "wildcat_saratoga",
+      "name": "WILDCAT战斗机／USS萨拉托加",
+      "unit_type": "aircraft",
+      "firepower": 20,
+      "survivability": 20,
+      "mobility": 60,
+      "power_min": 90,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "buff_mobility",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "north_carolina",
+      "name": "USS北卡罗来纳",
+      "unit_type": "battleship",
+      "firepower": 80,
+      "survivability": 75,
+      "mobility": 35,
+      "power_min": 180,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "king_george_v",
+      "name": "HMS英王乔治五世",
+      "unit_type": "battleship",
+      "firepower": 60,
+      "survivability": 60,
+      "mobility": 35,
+      "power_min": 145,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "buff_firepower",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "colorado",
+      "name": "USS科罗拉多",
+      "unit_type": "battleship",
+      "firepower": 65,
+      "survivability": 65,
+      "mobility": 20,
+      "power_min": 140,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_single_shell",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "repulse",
+      "name": "HMS反击",
+      "unit_type": "battleship",
+      "firepower": 45,
+      "survivability": 35,
+      "mobility": 35,
+      "power_min": 105,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_left"
+        },
+        {
+          "type": "buff_firepower",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "new_mexico",
+      "name": "USS新墨西哥",
+      "unit_type": "battleship",
+      "firepower": 50,
+      "survivability": 50,
+      "mobility": 15,
+      "power_min": 105,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "buff_firepower",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "alaska",
+      "name": "USS阿拉斯加",
+      "unit_type": "cruiser",
+      "firepower": 65,
+      "survivability": 65,
+      "mobility": 50,
+      "power_min": 170,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_single_shell",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "baltimore",
+      "name": "USS巴尔的摩",
+      "unit_type": "cruiser",
+      "firepower": 65,
+      "survivability": 65,
+      "mobility": 50,
+      "power_min": 170,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front_right"
+        },
+        {
+          "type": "buff_firepower",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "cleveland",
+      "name": "USS克利夫兰",
+      "unit_type": "cruiser",
+      "firepower": 45,
+      "survivability": 45,
+      "mobility": 55,
+      "power_min": 135,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front"
+        },
+        {
+          "type": "buff_mobility",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "san_diego",
+      "name": "USS圣地亚哥",
+      "unit_type": "cruiser",
+      "firepower": 35,
+      "survivability": 35,
+      "mobility": 70,
+      "power_min": 130,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "new_orleans",
+      "name": "USS新奥尔良",
+      "unit_type": "cruiser",
+      "firepower": 45,
+      "survivability": 45,
+      "mobility": 50,
+      "power_min": 130,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "hobart",
+      "name": "HMAS霍巴特",
+      "unit_type": "cruiser",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 45,
+      "power_min": 95,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "buff_survivability",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_left"
+        }
+      ]
+    },
+    {
+      "id": "marblehead",
+      "name": "USS马布尔黑德",
+      "unit_type": "cruiser",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 40,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front"
+        },
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "de_ruyter",
+      "name": "H.R.MS.德·鲁伊特",
+      "unit_type": "cruiser",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 40,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "buff_mobility",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_left"
+        }
+      ]
+    },
+    {
+      "id": "laffey",
+      "name": "USS拉菲",
+      "unit_type": "destroyer",
+      "firepower": 55,
+      "survivability": 60,
+      "mobility": 65,
+      "power_min": 170,
+      "source_id": "image_2",
+      "source_row": 1,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "buff_survivability",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "johnston",
+      "name": "USS约翰斯顿",
+      "unit_type": "destroyer",
+      "firepower": 50,
+      "survivability": 60,
+      "mobility": 70,
+      "power_min": 170,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_left"
+        },
+        {
+          "type": "buff_survivability",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "kidd",
+      "name": "USS基德",
+      "unit_type": "destroyer",
+      "firepower": 45,
+      "survivability": 45,
+      "mobility": 60,
+      "power_min": 140,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_right"
+        },
+        {
+          "type": "buff_survivability",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "benson",
+      "name": "USS本森",
+      "unit_type": "destroyer",
+      "firepower": 40,
+      "survivability": 40,
+      "mobility": 60,
+      "power_min": 130,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "buff_mobility",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "le_triomphant",
+      "name": "凯旋",
+      "unit_type": "destroyer",
+      "firepower": 45,
+      "survivability": 30,
+      "mobility": 65,
+      "power_min": 130,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_left"
+        },
+        {
+          "type": "buff_mobility",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "hughes",
+      "name": "USS休斯",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 50,
+      "power_min": 100,
+      "source_id": "image_2",
+      "source_row": 2,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "farragut",
+      "name": "USS法拉格特",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 45,
+      "power_min": 95,
+      "source_id": "image_2",
+      "source_row": 3,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "arrow",
+      "name": "HMS箭",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 30,
+      "mobility": 40,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 3,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front"
+        },
+        {
+          "type": "buff_survivability",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "john_d_ford",
+      "name": "USS约翰·D.·福特",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 20,
+      "mobility": 50,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 3,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "buff_survivability",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_left"
+        }
+      ]
+    },
+    {
+      "id": "vampire",
+      "name": "HMAS吸血鬼",
+      "unit_type": "destroyer",
+      "firepower": 30,
+      "survivability": 20,
+      "mobility": 50,
+      "power_min": 90,
+      "source_id": "image_2",
+      "source_row": 3,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front_right"
+        },
+        {
+          "type": "buff_mobility",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "missouri",
+      "name": "USS密苏里",
+      "unit_type": "battleship",
+      "firepower": 80,
+      "survivability": 80,
+      "mobility": 40,
+      "power_min": 190,
+      "source_id": "image_5",
+      "source_row": 1,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front"
+        },
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_right"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+# Local state and generated runtime files
+node_modules/
+__pycache__/
+*.py[cod]
+*.log
+*.sqlite3.tmp
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Private captures, screenshots and browser backups
+.diagnostic*/
+*-preview.png
+*.png
+*.jpg
+*.jpeg
+*.webp
+*browser-input-backup*
+*capture-backup*
+html/*
+!html/README.md
+!html/关键据点1.txt
+!html/关键据点2.txt
+!html/关键据点4.html
+!html/关键区域5.txt

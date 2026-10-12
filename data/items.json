@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "image_3",
+      "path": "sources/items-01.json",
+      "original_filename": "items-01.json"
+    }
+  ],
+  "rules": {
+    "item_equipment_limits": {
+      "standard": 1,
+      "special": 1
+    },
+    "item_amplification_mode": "bonus_rate_doubled",
+    "item_stat_stacking": "additive_bonus_rates",
+    "ignore_conditions_restores_outgoing_buffs": true,
+    "ignore_conditions_bypasses_buff_reduction": true,
+    "ignore_conditions_bypasses_debuff_reduction": true,
+    "ignore_conditions_bypasses_debuff_failure": null,
+    "ignore_conditions_bypasses_unit_type_limit": null,
+    "heal_can_revive": null
+  },
+  "rule_sources": {
+    "user_confirmed": [
+      "item_equipment_limits",
+      "item_amplification_mode",
+      "item_stat_stacking",
+      "ignore_conditions_restores_outgoing_buffs",
+      "ignore_conditions_bypasses_buff_reduction",
+      "ignore_conditions_bypasses_debuff_reduction"
+    ],
+    "unconfirmed": [
+      "heal_can_revive",
+      "ignore_conditions_bypasses_debuff_failure",
+      "ignore_conditions_bypasses_unit_type_limit"
+    ]
+  },
+  "items": [
+    {
+      "id": "standard_firepower",
+      "slot": "standard",
+      "position": 1,
+      "label": "火力提升",
+      "icon_label": "灰色准星",
+      "enabled": true,
+      "description": "本单位火力+20%",
+      "parameters": {
+        "target": "holder",
+        "stat": "firepower",
+        "stat_multiplier": 1.2
+      },
+      "source_id": "image_3"
+    },
+    {
+      "id": "standard_survivability",
+      "slot": "standard",
+      "position": 2,
+      "label": "存活性提升",
+      "icon_label": "灰色盾牌",
+      "enabled": true,
+      "description": "本单位存活性+20%",
+      "parameters": {
+        "target": "holder",
+        "stat": "survivability",
+        "stat_multiplier": 1.2
+      },
+      "source_id": "image_3"
+    },
+    {
+      "id": "standard_mobility",
+      "slot": "standard",
+      "position": 3,
+      "label": "机动性提升",
+      "icon_label": "灰色三圆点",
+      "enabled": true,
+      "description": "本单位机动性+20%",
+      "parameters": {
+        "target": "holder",
+        "stat": "mobility",
+        "stat_multiplier": 1.2
+      },
+      "source_id": "image_3"
+    },
+    {
+      "id": "standard_buff_amplifier",
+      "slot": "standard",
+      "position": 4,
+      "label": "增益效果翻倍",
+      "icon_label": "灰色圆环加号",
+      "enabled": true,
+      "description": "本单位增益效果幅度翻倍：30%提升至60%",
+      "parameters": {
+        "target": "holder_card_buffs",
+        "bonus_rate_multiplier": 2,
+        "resulting_buff_multiplier": 1.6
+      },
+      "source_id": "image_3"
+    },
+    {
+      "id": "standard_unused_5",
+      "slot": "standard",
+      "position": 5,
+      "label": "灰色第5项（排除）",
+      "icon_label": "灰色胶片样",
+      "enabled": false,
+      "description": "效果尚未录入，暂不参与配队",
+      "parameters": {},
+      "source_id": "image_3"
+    },
+    {
+      "id": "standard_unused_6",
+      "slot": "standard",
+      "position": 6,
+      "label": "灰色第6项（排除）",
+      "icon_label": "灰色叠页样",
+      "enabled": false,
+      "description": "效果尚未录入，暂不参与配队",
+      "parameters": {},
+      "source_id": "image_3"
+    },
+    {
+      "id": "special_disable_effects_power",
+      "slot": "special",
+      "position": 1,
+      "label": "停用自身效果并提升总属性",
+      "icon_label": "绿色屏幕准星",
+      "enabled": true,
+      "description": "停用本单位的增益减益效果，本单位总属性+40%",
+      "parameters": {
+        "target": "holder",
+        "disable_card_buffs": true,
+        "disable_card_debuffs": true,
+        "total_stat_multiplier": 1.4
+      },
+      "source_id": "image_3"
+    },
+    {
+      "id": "special_debuff_amplifier",
+      "slot": "special",
+      "position": 2,
+      "label": "减益效果翻倍",
+      "icon_label": "绿色圆环减号",
+      "enabled": true,
+      "description": "本单位减益效果幅度翻倍：20%降低至40%",
+      "parameters": {
+        "target": "holder_card_debuffs",
+        "reduction_rate_multiplier": 2,
+        "resulting_debuff_multiplier": 0.6
+      },
+      "source_id": "image_3"
+    },
+    {
+      "id": "special_force_debuff",
+      "slot": "special",
+      "position": 3,
+      "label": "减益强制生效",
+      "icon_label": "绿色交叉锚",
+      "enabled": true,
+      "description": "本单位的减益效果强制生效",
+      "parameters": {
+        "target": "holder_card_debuffs",
+        "bypass_weakness_match": true
+      },
+      "source_id": "image_3"
+    },
+    {
+      "id": "special_restore_health",
+      "slot": "special",
+      "position": 4,
+      "label": "恢复生命",
+      "icon_label": "绿色扳手",
+      "enabled": true,
+      "description": "本单位生命值+2",
+      "parameters": {
+        "target": "holder",
+        "health_delta": 2
+      },
+      "source_id": "image_3"
+    },
+    {
+      "id": "special_ignore_conditions",
+      "slot": "special",
+      "position": 5,
+      "label": "无视战斗条件",
+      "icon_label": "绿色扳手与粒子",
+      "enabled": true,
+      "description": "移除本单位的属性下降；增益失效时仍可向友方提供增益；抵消本单位发出的增益、减益效果减少50%",
+      "parameters": {
+        "target": "holder",
+        "ignore_battle_conditions": true
+      },
+      "source_id": "image_3"
+    }
+  ],
+  "inventory_snapshot": {
+    "source_id": "image_3",
+    "quantities": {
+      "standard_firepower": 0,
+      "standard_survivability": 0,
+      "standard_mobility": 0,
+      "standard_buff_amplifier": 0,
+      "standard_unused_5": 0,
+      "standard_unused_6": 0,
+      "special_disable_effects_power": 0,
+      "special_debuff_amplifier": 0,
+      "special_force_debuff": 0,
+      "special_restore_health": 0,
+      "special_ignore_conditions": 0
+    },
+    "note": "公开版初始库存占位，全部为0；请填写自己的实际库存。"
+  }
+}

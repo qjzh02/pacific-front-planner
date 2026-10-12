@@ -1,0 +1,62 @@
+{
+  "id": "image_4",
+  "kind": "public_transcription",
+  "note": "由已核对的游戏数据整理；原始截图及上传文件标识不随公开版分发。",
+  "cards": [],
+  "effect_types": [
+    {
+      "id": "debuff_plane",
+      "kind": "debuff",
+      "icon_label": "红色飞机",
+      "target_stat": "total_power",
+      "weakness_name": "空中打击",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_vertical_lines",
+      "kind": "debuff",
+      "icon_label": "红色竖线",
+      "target_stat": "total_power",
+      "weakness_name": "防空火力",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_concentric_target",
+      "kind": "debuff",
+      "icon_label": "红色同心圆",
+      "target_stat": "total_power",
+      "weakness_name": "侦察性",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_single_shell",
+      "kind": "debuff",
+      "icon_label": "红色单弹",
+      "target_stat": "total_power",
+      "weakness_name": "重炮",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_three_shells",
+      "kind": "debuff",
+      "icon_label": "红色三弹",
+      "target_stat": "total_power",
+      "weakness_name": "速射炮",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    },
+    {
+      "id": "debuff_ring_projectile",
+      "kind": "debuff",
+      "icon_label": "红色弹体带圆环",
+      "target_stat": "total_power",
+      "weakness_name": "烟雾",
+      "multiplier": 0.8,
+      "semantic_status": "confirmed"
+    }
+  ]
+}

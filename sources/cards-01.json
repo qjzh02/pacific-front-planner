@@ -1,0 +1,337 @@
+{
+  "id": "image_1",
+  "kind": "public_transcription",
+  "note": "由已核对的游戏数据整理；原始截图及上传文件标识不随公开版分发。",
+  "cards": [
+    {
+      "id": "helldiver_essex",
+      "name": "HELLDIVER俯冲轰炸机／USS埃塞克斯",
+      "unit_type": "aircraft",
+      "firepower": 75,
+      "survivability": 30,
+      "mobility": 75,
+      "power_min": 170,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "buff_firepower",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_plane",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "corsair_essex",
+      "name": "CORSAIR战斗机／USS埃塞克斯",
+      "unit_type": "aircraft",
+      "firepower": 55,
+      "survivability": 30,
+      "mobility": 95,
+      "power_min": 170,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_plane",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "avenger_enterprise",
+      "name": "AVENGER鱼雷轰炸机／USS企业",
+      "unit_type": "aircraft",
+      "firepower": 60,
+      "survivability": 25,
+      "mobility": 60,
+      "power_min": 135,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_plane",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "hellcat_enterprise",
+      "name": "HELLCAT战斗机／USS企业",
+      "unit_type": "aircraft",
+      "firepower": 35,
+      "survivability": 25,
+      "mobility": 80,
+      "power_min": 130,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_plane",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "dauntless_saratoga",
+      "name": "DAUNTLESS俯冲轰炸机／USS萨拉托加",
+      "unit_type": "aircraft",
+      "firepower": 35,
+      "survivability": 20,
+      "mobility": 55,
+      "power_min": 100,
+      "source_id": "image_1",
+      "source_row": 1,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "debuff_plane",
+          "direction": "front"
+        },
+        {
+          "type": "buff_firepower",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "wildcat_saratoga",
+      "name": "WILDCAT战斗机／USS萨拉托加",
+      "unit_type": "aircraft",
+      "firepower": 20,
+      "survivability": 20,
+      "mobility": 60,
+      "power_min": 90,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "buff_mobility",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "north_carolina",
+      "name": "USS北卡罗来纳",
+      "unit_type": "battleship",
+      "firepower": 80,
+      "survivability": 75,
+      "mobility": 35,
+      "power_min": 180,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "king_george_v",
+      "name": "HMS英王乔治五世",
+      "unit_type": "battleship",
+      "firepower": 60,
+      "survivability": 60,
+      "mobility": 35,
+      "power_min": 145,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "buff_firepower",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "colorado",
+      "name": "USS科罗拉多",
+      "unit_type": "battleship",
+      "firepower": 65,
+      "survivability": 65,
+      "mobility": 20,
+      "power_min": 140,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_single_shell",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "repulse",
+      "name": "HMS反击",
+      "unit_type": "battleship",
+      "firepower": 45,
+      "survivability": 35,
+      "mobility": 35,
+      "power_min": 105,
+      "source_id": "image_1",
+      "source_row": 2,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_left"
+        },
+        {
+          "type": "buff_firepower",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "new_mexico",
+      "name": "USS新墨西哥",
+      "unit_type": "battleship",
+      "firepower": 50,
+      "survivability": 50,
+      "mobility": 15,
+      "power_min": 105,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 1,
+      "effects": [
+        {
+          "type": "buff_firepower",
+          "direction": "left"
+        },
+        {
+          "type": "debuff_single_shell",
+          "direction": "front_right"
+        }
+      ]
+    },
+    {
+      "id": "alaska",
+      "name": "USS阿拉斯加",
+      "unit_type": "cruiser",
+      "firepower": 65,
+      "survivability": 65,
+      "mobility": 50,
+      "power_min": 170,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 2,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front_left"
+        },
+        {
+          "type": "debuff_single_shell",
+          "direction": "front"
+        }
+      ]
+    },
+    {
+      "id": "baltimore",
+      "name": "USS巴尔的摩",
+      "unit_type": "cruiser",
+      "firepower": 65,
+      "survivability": 65,
+      "mobility": 50,
+      "power_min": 170,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 3,
+      "effects": [
+        {
+          "type": "debuff_concentric_target",
+          "direction": "front_right"
+        },
+        {
+          "type": "buff_firepower",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "cleveland",
+      "name": "USS克利夫兰",
+      "unit_type": "cruiser",
+      "firepower": 45,
+      "survivability": 45,
+      "mobility": 55,
+      "power_min": 135,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 4,
+      "effects": [
+        {
+          "type": "debuff_three_shells",
+          "direction": "front"
+        },
+        {
+          "type": "buff_mobility",
+          "direction": "right"
+        }
+      ]
+    },
+    {
+      "id": "san_diego",
+      "name": "USS圣地亚哥",
+      "unit_type": "cruiser",
+      "firepower": 35,
+      "survivability": 35,
+      "mobility": 70,
+      "power_min": 130,
+      "source_id": "image_1",
+      "source_row": 3,
+      "source_column": 5,
+      "effects": [
+        {
+          "type": "debuff_vertical_lines",
+          "direction": "front"
+        },
+        {
+          "type": "debuff_ring_projectile",
+          "direction": "front_right"
+        }
+      ]
+    }
+  ]
+}
