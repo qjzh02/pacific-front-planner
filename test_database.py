@@ -60,6 +60,7 @@ class ItemCatalogTests(unittest.TestCase):
         })
         self.assertTrue(rules["ignore_conditions_bypasses_buff_reduction"])
         self.assertTrue(rules["ignore_conditions_bypasses_debuff_reduction"])
+        self.assertEqual(rules["battle_items_disabled_slots"], ["standard", "special"])
 
     def test_special_item_effects(self):
         items = {key: json.loads(value) for key, value in self.connection.execute(

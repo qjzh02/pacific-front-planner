@@ -23,12 +23,12 @@
             <div id="capture-tools" class="capture-tools">
               <div class="capture-toolbar"><label>抓取填入<select id="capture-target" aria-label="抓取目标组"></select></label><button type="button" id="capture-current" disabled>抓取当前据点</button><button type="button" id="capture-undo" disabled>撤销上次抓取</button></div>
               <p id="capture-connection" class="capture-status">游戏页面未连接</p>
-              <p class="capture-note">阶段对应波次，每个据点对应一组。按全胜规划，只录入区域条件，忽略带入和指定；卡牌、生命和库存仍由你设置。</p>
+              <p class="capture-note">阶段对应波次，每个据点对应一组。按全胜规划，只录入区域条件，忽略带入、指定和全域；卡牌、生命和库存仍由你设置。</p>
               <p id="capture-feedback" class="capture-status" role="status" aria-live="polite"></p>
               <details><summary>首次连接与离线导入</summary><ol><li>先设置波次、每波敌军数量及自己的资源。</li><li>复制采集脚本，在游戏配队页面打开开发者工具“控制台”，粘贴并运行。脚本含本次本机服务的配对码。</li><li>点击游戏页右下角“连接／打开本地求解器”。通过本机服务连接，切换标签页或刷新求解器不影响连接。游戏页保持打开。</li><li>你手动切换据点，在求解器选择目标组并抓取。成功后自动选中下一组。游戏整页刷新或本机服务重启后，重新复制并运行脚本。</li></ol>
                 <div class="capture-actions"><button type="button" id="capture-copy-script">复制游戏页采集脚本</button><button type="button" id="capture-file-button">导入 HTML/TXT</button><input type="file" id="capture-file" accept=".html,.htm,.txt,text/html,text/plain" hidden></div>
                 <textarea id="capture-script" aria-label="游戏页采集脚本，可手动全选复制" readonly spellcheck="false" hidden></textarea>
-                <p class="capture-note">游戏页需要访问本机127.0.0.1的求解器服务；浏览器可能询问本地网络访问权限。无法连接时可导入据点HTML/TXT。支持区域属性下降和敌方战力提升；请在敌军未受我方减益时采集，未知条件会提示并保留原输入。</p>
+                <p class="capture-note">游戏页需要访问本机127.0.0.1的求解器服务；浏览器可能询问本地网络访问权限。无法连接时可导入据点HTML/TXT。支持区域属性下降、敌方战力提升、禁用单位类型和禁用道具；请在敌军未受我方减益时采集，未知条件会提示并保留原输入。</p>
               </details>
             </div>
             <div class="wave-toolbar"><button type="button" id="add-wave">＋添加一波</button><button type="button" id="remove-wave">移除最后一波</button></div>

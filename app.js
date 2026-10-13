@@ -14,6 +14,7 @@ const conditionText = (global, conditions = {}) => [
   ...Object.entries(STAT_NAMES).filter(([stat]) => global[stat] > 0).map(([stat, name]) => `${name}−${format(global[stat] * 100)}%`),
   ...(conditions.buffsDisabled ? ['增益失效'] : []), ...(conditions.debuffsDisabled ? ['减益失效'] : []),
   ...(conditions.buffsReduced ? ['增益效果减少50%'] : []), ...(conditions.debuffsReduced ? ['减益效果减少50%'] : []),
+  ...(conditions.itemsDisabled ? ['禁用道具（灰色、绿色）'] : []),
   ...(conditions.allowedTypes ? [`限定舰种：${conditions.allowedTypes.map(type => TYPE_NAMES[type]).join('、')}`] : []),
 ].join('，') || '无战场条件';
 
@@ -25,7 +26,7 @@ function groupConditionsMarkup(condition, waveIndex, groupIndex) {
     const value = saved.get(stat) ?? { active: rate > 0, percent: rate > 0 ? rate * 100 : 24 };
     return `<div class="global-row" data-global="${stat}"><label><input type="checkbox" class="global-active" ${value.active ? 'checked' : ''} aria-label="${label}所有单位${name}">所有单位${name}</label><div class="percent-field">−<input type="number" class="global-percent" min="0" max="100" step="any" value="${escape(value.percent)}" aria-label="${label}${name}减益百分比">%</div></div>`;
   }).join('')}</div>
-    <div class="effect-conditions"><label><input type="checkbox" class="buffs-disabled" ${condition.buffsDisabled ? 'checked' : ''} aria-label="${label}增益失效">增益失效</label><label><input type="checkbox" class="debuffs-disabled" ${condition.debuffsDisabled ? 'checked' : ''} aria-label="${label}减益失效">减益失效</label><label><input type="checkbox" class="buffs-reduced" ${condition.buffsReduced ? 'checked' : ''} aria-label="${label}增益效果减少50%">增益效果减少50%</label><label><input type="checkbox" class="debuffs-reduced" ${condition.debuffsReduced ? 'checked' : ''} aria-label="${label}减益效果减少50%">减益效果减少50%</label><label><input type="checkbox" class="restrict-types" ${condition.allowedTypes != null ? 'checked' : ''} aria-label="${label}限定舰种">限定舰种</label></div>
+    <div class="effect-conditions"><label><input type="checkbox" class="buffs-disabled" ${condition.buffsDisabled ? 'checked' : ''} aria-label="${label}增益失效">增益失效</label><label><input type="checkbox" class="debuffs-disabled" ${condition.debuffsDisabled ? 'checked' : ''} aria-label="${label}减益失效">减益失效</label><label><input type="checkbox" class="buffs-reduced" ${condition.buffsReduced ? 'checked' : ''} aria-label="${label}增益效果减少50%">增益效果减少50%</label><label><input type="checkbox" class="debuffs-reduced" ${condition.debuffsReduced ? 'checked' : ''} aria-label="${label}减益效果减少50%">减益效果减少50%</label><label><input type="checkbox" class="items-disabled" ${condition.itemsDisabled ? 'checked' : ''} aria-label="${label}禁用道具">禁用道具（禁用变项）</label><label><input type="checkbox" class="restrict-types" ${condition.allowedTypes != null ? 'checked' : ''} aria-label="${label}限定舰种">限定舰种</label></div>
     <div class="allowed-types"><span>允许上阵（可多选）</span>${Object.entries(TYPE_NAMES).map(([type, name]) => `<label><input type="checkbox" value="${type}" ${(condition.allowedTypeInputs ?? condition.allowedTypes ?? []).includes(type) ? 'checked' : ''} aria-label="${label}允许${name}">${name}</label>`).join('')}</div>
     </fieldset>`;
 }
@@ -82,6 +83,7 @@ function readInput(validate = false) {
       globalInputs: rows.map(row => ({ stat: row.dataset.global, active: row.querySelector('.global-active').checked, percent: row.querySelector('.global-percent').value })),
       buffsDisabled: group.querySelector('.buffs-disabled').checked, debuffsDisabled: group.querySelector('.debuffs-disabled').checked,
       buffsReduced: group.querySelector('.buffs-reduced').checked, debuffsReduced: group.querySelector('.debuffs-reduced').checked,
+      itemsDisabled: group.querySelector('.items-disabled').checked,
       allowedTypes: restricted ? allowedTypeInputs : null, allowedTypeInputs,
       captureSource: JSON.parse(group.dataset.captureSource ?? 'null') };
   }) }));
@@ -203,7 +205,7 @@ function renderResult(result) {
 }
 
 function captureSourceText(source) {
-  return `${source.action} · 阶段${source.stage} · 关键据点${source.keypoint}${source.enemyPowerIncrease > 0 ? ` · 区域敌方战力＋${format(source.enemyPowerIncrease * 100)}%（已计入敌军数值）` : ''}`;
+  return `${source.action} · 阶段${source.stage} · 关键据点${source.keypoint}${source.enemyPowerIncrease > 0 ? ` · 区域敌方战力＋${format(source.enemyPowerIncrease * 100)}%（已计入敌军数值）` : ''}${source.ignoredEnemyPowerIncrease > 0 ? ` · 带入敌方战力＋${format(source.ignoredEnemyPowerIncrease * 100)}%（已还原原战力）` : ''}`;
 }
 
 function captureFeedback(message, failed = false) {

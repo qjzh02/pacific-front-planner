@@ -8,6 +8,7 @@
   delete globalThis.PacificFrontCaptureToken;
   const STATS = ['firepower', 'survivability', 'mobility'];
   const FLAGS = ['buffsDisabled', 'debuffsDisabled', 'buffsReduced', 'debuffsReduced'];
+  const UNIT_TYPES = ['aircraft', 'battleship', 'cruiser', 'destroyer'];
   const WEAKNESSES = {
     _antiAircraftFire_: 'debuff_vertical_lines', _detection_: 'debuff_concentric_target',
     _smokes_: 'debuff_ring_projectile', _largeCaliber_: 'debuff_single_shell',
@@ -23,18 +24,18 @@
   };
   const text = node => node.textContent.replace(/\s+/g, ' ').trim();
   const blankCondition = () => ({ global: { firepower: 0, survivability: 0, mobility: 0 },
-    buffsDisabled: false, debuffsDisabled: false, buffsReduced: false, debuffsReduced: false, allowedTypes: null });
+    buffsDisabled: false, debuffsDisabled: false, buffsReduced: false, debuffsReduced: false, itemsDisabled: false, allowedTypes: null });
 
   function readRegion(root) {
     const container = one(root, '_conditions_', '战场条件');
     const condition = blankCondition();
-    const result = { condition, enemyPowerIncrease: 0 };
+    const result = { condition, enemyPowerIncrease: 0, ignoredEnemyPowerIncrease: 0 };
     if (hasClass(container, '_noConditions_')) {
       check(text(container) === '无战斗条件', '无战斗条件标记与内容不一致，请等待页面更新后重试。');
       return result;
     }
     const headers = nodes(container, '_subheader_');
-    check(headers.length > 0 && headers.every(node => ['区域', '带入', '指定'].includes(text(node))), '存在无法识别的战场条件栏目，未导入。');
+    check(headers.length > 0 && headers.every(node => ['区域', '带入', '指定', '全域'].includes(text(node))), '存在无法识别的战场条件栏目，未导入。');
     const enemyRows = body => nodes(body, '_rowLabel_').filter(row => nodes(row, '_label_').some(label => text(label) === '敌方战力'));
     const enemyRate = row => {
       const value = text(one(row, '_pctValue_', '敌方战力提升比例')).replace(/\s/g, '');
@@ -45,12 +46,17 @@
       const body = header.nextElementSibling;
       check(body && hasClass(body, '_bodyZone_'), '带入条件内容不完整，未导入。');
       const active = enemyRows(body).filter(row => !nodes(row, '_struckText_').length && enemyRate(row) > 0);
-      // 显示值经过取整，不能可靠地除掉带入增幅来还原原战力。
-      check(!active.length, '带入敌方战力提升：当前页面尚未识别出原战力，未导入。请提供含原战力的战斗前页面样本。');
+      check(active.length <= 1 && !(active.length && result.ignoredEnemyPowerIncrease), '多项带入敌方提升的叠加规则尚未核对，未导入。');
+      if (active.length) {
+        const rate = enemyRate(active[0]);
+        // shortcut: 两组实测仅核对了8%与整数战力，其他比例收到数据后扩展。
+        check(rate === 0.08, '带入敌方提升比例尚未核对，未导入；请提供提升前后的战力。');
+        result.ignoredEnemyPowerIncrease = rate;
+      }
     }
     const regions = headers.filter(node => text(node) === '区域');
     check(regions.length <= 1, '存在多个区域条件栏目，未导入。');
-    // 全胜规划只取区域；仅有带入或指定时，当前组区域条件为零。
+    // 用户确认全域是下一关带入；与指定一起忽略，只录入当前区域。
     if (!regions.length) return result;
     const body = regions[0].nextElementSibling;
     check(body && hasClass(body, '_bodyZone_'), '区域条件内容缺失，请等待页面更新后重试。');
@@ -59,6 +65,11 @@
     const seen = new Set();
     for (const row of rows) {
       const label = text(one(row, '_statLabel_', '区域属性名称'));
+      if (label === '禁用变项') {
+        check(!condition.itemsDisabled && text(row) === label, '禁用变项条件重复或包含未知内容，未导入。');
+        condition.itemsDisabled = true;
+        continue;
+      }
       const stat = statIds[label];
       const valueText = text(one(row, '_pctValue_', '区域属性下降比例')).replace(/\s/g, '').replace(/−/g, '-');
       check(stat && !seen.has(stat) && /^-\d+(?:\.\d+)?%$/.test(valueText), `无法识别区域条件“${text(row)}”，未导入。`);
@@ -70,11 +81,34 @@
     const boosts = enemyRows(body);
     check(boosts.length <= 1, '存在多项敌方战力提升，未导入。');
     if (boosts.length) result.enemyPowerIncrease = enemyRate(boosts[0]);
+    check(!(result.enemyPowerIncrease && result.ignoredEnemyPowerIncrease), '区域与带入敌方提升的叠加及取整规则尚未核对，未导入。');
+    const typeSections = regionBody => nodes(regionBody, '_section_').filter(section =>
+      nodes(section, '_label_').some(label => text(label) === '禁用的单位类型'));
+    const restrictions = typeSections(body);
+    check(restrictions.length <= 1, '存在多项禁用单位类型栏目，未导入。');
+    if (restrictions.length) {
+      const section = restrictions[0];
+      const iconRow = one(section, '_iconsRow_', '禁用单位类型图标栏');
+      const icons = nodes(iconRow, '_shipIcon_');
+      check(icons.length > 0 && icons.length === iconRow.querySelectorAll('img').length &&
+        icons.length === nodes(iconRow, '_iconTooltip_').length, '禁用单位类型图标缺失或不完整，未导入。');
+      const banned = icons.map(icon => {
+        const filename = (icon.getAttribute('src') ?? '').split('/').pop();
+        const match = filename.match(/^icon_([a-z]+)_standard-[\w-]+\.webp(?:[?#].*)?$/);
+        const type = /^card_ship_plane-[\w-]+\.webp(?:[?#].*)?$/.test(filename) ? 'aircraft' : match?.[1];
+        check(UNIT_TYPES.includes(type), '存在未知禁用单位类型图标，未导入。');
+        return type;
+      });
+      check(new Set(banned).size === banned.length && text(section) === '禁用的单位类型', '禁用单位类型重复或包含未知内容，未导入。');
+      condition.allowedTypes = UNIT_TYPES.filter(type => !banned.includes(type));
+      check(condition.allowedTypes.length > 0, '所有单位类型均被禁用，当前求解器无法导入此限制。');
+    }
     const remaining = body.cloneNode(true);
     nodes(remaining, '_statRow_').forEach(node => node.remove());
     enemyRows(remaining).forEach(node => node.remove());
-    // shortcut: 仅核对过区域属性下降和敌方战力提升；其他区域效果收到样本后扩展。
-    check(rows.length + boosts.length > 0 && !text(remaining), '区域包含尚不支持的条件，未导入；请保留页面样本。');
+    typeSections(remaining).forEach(node => node.remove());
+    // shortcut: 仅核对过区域属性下降、敌方战力提升、禁用类型及禁用变项；其他效果收到样本后扩展。
+    check(rows.length + boosts.length + restrictions.length > 0 && !text(remaining), '区域包含尚不支持的条件，未导入；请保留页面样本。');
     return result;
   }
 
@@ -98,14 +132,25 @@
         check(matches.length === 1, `敌军${index + 1}存在未知弱点图标，未导入。`);
         return matches[0][1];
       });
-      return { active: true, power: Number(powerText), weaknesses };
+      let power = Number(powerText);
+      if (region.ignoredEnemyPowerIncrease) {
+        check(hasClass(powerNode, '_buffed_'), `敌军${index + 1}缺少战力加成标记，未导入。`);
+        check(Number.isInteger(power), `敌军${index + 1}战力不是已核对的整数，无法还原。`);
+        const multiplier = 1 + region.ignoredEnemyPowerIncrease;
+        const original = Math.round(power / multiplier);
+        // 增幅大于1时，显示值的四舍五入误差除以增幅后小于0.5，可唯一恢复整数。
+        check(Math.round(original * multiplier) === power, `敌军${index + 1}显示战力与已核对的取整规则不一致，无法还原。`);
+        power = original;
+      }
+      return { active: true, power, weaknesses };
     });
     const stagePanel = one(root, '_stageInfo_', '阶段信息');
     const stage = text(one(stagePanel, '_title_', '阶段标题')).match(/^阶段\s*(\d+)$/);
     const keypoint = text(one(root, '_headerTitle_', '据点标题')).match(/^关键据点\s*(\d+)$/);
     check(stage && keypoint, '阶段或据点编号无法识别，未导入。');
     const snapshot = { version: 1, source: { action: text(one(root, '_pageHeaderTitle_', '行动名称')),
-      stage: Number(stage[1]), keypoint: Number(keypoint[1]), ...(region.enemyPowerIncrease > 0 ? { enemyPowerIncrease: region.enemyPowerIncrease } : {}) },
+      stage: Number(stage[1]), keypoint: Number(keypoint[1]), ...(region.enemyPowerIncrease > 0 ? { enemyPowerIncrease: region.enemyPowerIncrease } : {}),
+      ...(region.ignoredEnemyPowerIncrease > 0 ? { ignoredEnemyPowerIncrease: region.ignoredEnemyPowerIncrease } : {}) },
       enemies, condition: region.condition };
     validateSnapshot(snapshot);
     return snapshot;
@@ -119,6 +164,8 @@
       Number.isInteger(source.keypoint) && source.keypoint >= 1 && source.keypoint <= 30, '采集来源标识无效。');
     check(source.enemyPowerIncrease === undefined || (Number.isFinite(source.enemyPowerIncrease * 100) &&
       typeof source.enemyPowerIncrease === 'number' && source.enemyPowerIncrease >= 0), '敌方战力提升来源记录无效。');
+    check(source.ignoredEnemyPowerIncrease === undefined || (source.ignoredEnemyPowerIncrease === 0.08 && !source.enemyPowerIncrease),
+      '带入敌方战力还原来源记录无效。');
     check(Array.isArray(snapshot.enemies) && snapshot.enemies.length === 4, '采集结果必须包含4个敌军。');
     const known = new Set(Object.values(WEAKNESSES));
     for (const enemy of snapshot.enemies) {
@@ -129,7 +176,11 @@
     }
     const condition = snapshot.condition;
     check(condition && STATS.every(stat => Number.isFinite(condition.global?.[stat]) && condition.global[stat] >= 0 && condition.global[stat] <= 1) &&
-      FLAGS.every(flag => condition[flag] === false) && condition.allowedTypes === null, '采集区域条件无效或首版尚不支持。');
+      FLAGS.every(flag => condition[flag] === false), '采集区域条件无效或首版尚不支持。');
+    check(condition.allowedTypes === null || (Array.isArray(condition.allowedTypes) && condition.allowedTypes.length > 0 &&
+      condition.allowedTypes.every(type => UNIT_TYPES.includes(type)) && new Set(condition.allowedTypes).size === condition.allowedTypes.length),
+      '采集允许单位类型无效或重复。');
+    check(condition.itemsDisabled === undefined || typeof condition.itemsDisabled === 'boolean', '采集禁用道具条件无效。');
   }
 
   function mergeSnapshot(input, waveIndex, groupIndex, snapshot) {
@@ -143,9 +194,12 @@
       rawPower: String(enemy.power), weaknesses: [...enemy.weaknesses] })));
     target.groupConditions ??= Array.from({ length: target.enemies.length / 4 }, blankCondition);
     target.groupConditions[groupIndex] = { ...blankCondition(), global: { ...snapshot.condition.global },
+      allowedTypes: snapshot.condition.allowedTypes === null ? null : [...snapshot.condition.allowedTypes],
+      itemsDisabled: snapshot.condition.itemsDisabled ?? false,
       globalInputs: STATS.map(stat => ({ stat, active: snapshot.condition.global[stat] > 0, percent: snapshot.condition.global[stat] * 100 })),
       captureSource: { action: snapshot.source.action, stage: snapshot.source.stage, keypoint: snapshot.source.keypoint,
-        ...(snapshot.source.enemyPowerIncrease > 0 ? { enemyPowerIncrease: snapshot.source.enemyPowerIncrease } : {}) } };
+        ...(snapshot.source.enemyPowerIncrease > 0 ? { enemyPowerIncrease: snapshot.source.enemyPowerIncrease } : {}),
+        ...(snapshot.source.ignoredEnemyPowerIncrease > 0 ? { ignoredEnemyPowerIncrease: snapshot.source.ignoredEnemyPowerIncrease } : {}) } };
     return result;
   }
 

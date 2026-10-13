@@ -11,12 +11,14 @@ ROOT = Path(__file__).resolve().parent
 
 class FixtureParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
-        assert tag in {"html", "meta", "body", "h1", "h2", "h3", "section", "div", "article", "span"}, tag
-        allowed = {"lang"} if tag == "html" else {"charset"} if tag == "meta" else {"class"}
+        assert tag in {"html", "meta", "body", "h1", "h2", "h3", "section", "div", "article", "span", "img"}, tag
+        allowed = {"lang"} if tag == "html" else {"charset"} if tag == "meta" else {"class", "src"} if tag == "img" else {"class"}
         assert all(name in allowed for name, _ in attrs), tag
         for name, value in attrs:
             if name == "class":
                 assert all(re.fullmatch(r"_[A-Za-z0-9]+_public_1", c) for c in value.split()), value
+            elif name == "src":
+                assert re.fullmatch(r"/assets/(?:icon_(?:battleship|cruiser|destroyer)_standard|card_ship_plane)-public\.webp", value), value
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
@@ -63,7 +65,7 @@ class PublicReleaseTests(unittest.TestCase):
 
     def test_capture_fixtures_have_only_artificial_markup(self):
         files = list((ROOT / "html").glob("*.txt")) + list((ROOT / "html").glob("*.html"))
-        self.assertEqual(len(files), 4)
+        self.assertEqual(len(files), 11)
         for path in files:
             content = path.read_text(encoding="utf-8")
             self.assertLess(len(content), 6000)

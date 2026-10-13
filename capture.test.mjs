@@ -62,6 +62,79 @@ test('据点4忽略带入，只录入区域火力24%', async () => {
   });
 });
 
+test('区域禁用战列舰转换为其余允许类型，并保留敌军数据', async () => {
+  await withSample('./html/关键区域-存在禁用战舰.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [161, 125, 166, 169]);
+    assert.deepEqual(snapshot.condition.allowedTypes, ['aircraft', 'cruiser', 'destroyer']);
+    assert.equal(snapshot.source.stage, 3);
+    assert.equal(snapshot.source.keypoint, 6);
+  });
+});
+
+test('飞机图标命名格式与战列舰共同禁用，只允许巡洋舰和驱逐舰', async () => {
+  await withSample('./html/关键区域-存在未知禁用单位图标.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [182, 188, 179, 166]);
+    assert.deepEqual(snapshot.condition.allowedTypes, ['cruiser', 'destroyer']);
+    assert.equal(snapshot.condition.debuffsReduced, false);
+    assert.equal(snapshot.condition.itemsDisabled, false);
+  });
+});
+
+test('两份禁用变项样本按实际区域栏目禁用道具，忽略带入舰种并还原8%', async () => {
+  for (const file of ['./html/关键区域-区域禁用变项.txt', './html/关键区域-全域禁用变项.txt']) {
+    await withSample(file, async page => {
+      const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+      assert.equal(snapshot.condition.itemsDisabled, true);
+      assert.equal(snapshot.condition.allowedTypes, null);
+      assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [86, 113, 114, 95]);
+    });
+  }
+});
+
+test('全域是后续带入条件，不修改当前敌军、舰种或区域属性', async () => {
+  await withSample('./html/关键区域-区域条件与全域条件不识别1.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [159, 143, 166, 162]);
+    assert.deepEqual(snapshot.condition.global, { firepower: 0, survivability: 0.12, mobility: 0.12 });
+    assert.equal(snapshot.source.enemyPowerIncrease, undefined);
+    assert.equal(snapshot.source.ignoredEnemyPowerIncrease, undefined);
+  });
+  await withSample('./html/关键区域-全域不识别2.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [150, 151, 121, 126]);
+    assert.deepEqual(snapshot.condition.global, { firepower: 0, survivability: 0, mobility: 0 });
+    assert.equal(snapshot.condition.allowedTypes, null);
+    assert.equal(snapshot.condition.itemsDisabled, false);
+  });
+});
+
+test('禁用类型支持多个已知舰种，带入限制忽略，未知或缺失图标拒绝', async () => {
+  await withSample('./html/关键区域-存在禁用战舰.txt', async page => {
+    const results = await page.evaluate(() => {
+      const row = sample.querySelector('[class*="_conditions_"] [class*="_iconsRow_"]');
+      const extra = row.firstElementChild.cloneNode(true);
+      extra.querySelector('img').setAttribute('src', '/assets/icon_cruiser_standard-test.webp'); row.append(extra);
+      const multiple = PacificFrontCapture.readSnapshot(sample).condition.allowedTypes;
+      const header = sample.querySelector('[class*="_conditions_"] [class*="_subheader_"]');
+      header.textContent = '带入';
+      const carried = PacificFrontCapture.readSnapshot(sample).condition.allowedTypes;
+      header.textContent = '区域';
+      const errors = [];
+      const run = () => { try { PacificFrontCapture.readSnapshot(sample); } catch (e) { errors.push(e.message); } };
+      extra.querySelector('img').setAttribute('src', '/assets/icon_unknown_standard-test.webp'); run();
+      row.replaceChildren(); run();
+      return { multiple, carried, errors };
+    });
+    assert.deepEqual(results.multiple, ['aircraft', 'destroyer']);
+    assert.equal(results.carried, null);
+    assert.equal(results.errors.length, 2);
+    assert.match(results.errors[0], /未知.*类型/);
+    assert.match(results.errors[1], /类型图标.*缺失/);
+  });
+});
+
 test('区域敌方战力提升直接使用已提升数值，不重复放大', async () => {
   await withSample('./html/关键区域5.txt', async page => {
     const snapshot = await page.evaluate(() => {
@@ -85,14 +158,55 @@ test('已经受我方减益的敌军战力拒绝当作初始值导入', async ()
   });
 });
 
-test('带入敌方提升缺少原战力时拒绝倒推取整后的数值', async () => {
+test('带入8%按实测四舍五入规则恢复原战力，覆盖两组已核对的数值案例', async () => {
+  await withSample('./html/关键区域-存在带入百分比加成.txt', async page => {
+    const first = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(first.enemies.map(enemy => enemy.power), [132, 137, 125, 121]);
+    assert.equal(first.source.ignoredEnemyPowerIncrease, 0.08);
+    assert.equal(first.source.enemyPowerIncrease, undefined);
+    const second = await page.evaluate(() => {
+      sample.querySelectorAll('[class*="_enemies_"] [class*="_powerValue_"]').forEach((node, i) => {
+        node.textContent = String([152, 136, 157, 138][i]);
+      });
+      return PacificFrontCapture.readSnapshot(sample);
+    });
+    assert.deepEqual(second.enemies.map(enemy => enemy.power), [141, 126, 145, 128]);
+  });
+});
+
+test('带入还原拒绝未核对比例、区域与带入叠加和不一致战力', async () => {
+  await withSample('./html/关键区域-存在带入百分比加成.txt', async page => {
+    const errors = await page.evaluate(() => {
+      const errors = [];
+      const run = () => { try { PacificFrontCapture.readSnapshot(sample); } catch (e) { errors.push(e.message); } };
+      const rate = sample.querySelector('[class*="_conditions_"] [class*="_pctValue_"]');
+      rate.textContent = '+10%'; run(); rate.textContent = '+8%';
+      const header = sample.querySelector('[class*="_conditions_"] [class*="_subheader_"]');
+      const body = header.nextElementSibling;
+      const regionHeader = header.cloneNode(true), regionBody = body.cloneNode(true);
+      regionHeader.textContent = '区域'; header.parentElement.append(regionHeader, regionBody);
+      run(); regionHeader.remove(); regionBody.remove();
+      const power = sample.querySelector('[class*="_enemies_"] [class*="_powerValue_"]');
+      power.textContent = '7'; run(); power.textContent = '143';
+      power.className = power.className.replace('_buffed_', '_normal_'); run();
+      return errors;
+    });
+    assert.equal(errors.length, 4);
+    assert.match(errors[0], /比例.*未核对/);
+    assert.match(errors[1], /叠加/);
+    assert.match(errors[2], /还原/);
+    assert.match(errors[3], /加成标记/);
+  });
+});
+
+test('带入还原仍拒绝已受我方减益的显示战力', async () => {
   await withSample('./html/关键区域5.txt', async page => {
     const error = await page.evaluate(() => {
       const header = [...sample.querySelectorAll('[class*="_subheader_"]')].find(node => node.textContent.trim() === '区域');
       header.textContent = '带入';
       try { PacificFrontCapture.readSnapshot(sample); } catch (error) { return error.message; }
     });
-    assert.match(error, /带入.*原战力/);
+    assert.match(error, /我方减益/);
   });
 });
 
@@ -248,6 +362,72 @@ test('区域敌方战力提升的页面导入与来源说明刷新后保留', as
   });
 });
 
+test('带入8%页面导入恢复原战力，来源刷新保留且可以撤销', async () => {
+  await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键区域-存在带入百分比加成.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4).map(enemy => enemy.power), [132, 137, 125, 121]);
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    assert.equal(imported.waves[0].groupConditions[0].captureSource.ignoredEnemyPowerIncrease, 0.08);
+    assert.match(await page.locator('.capture-source').textContent(), /带入.*8%.*已还原/);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.match(await page.locator('.capture-source').textContent(), /带入.*已还原/);
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
+
+test('禁用战列舰导入到目标组，舰种选择保存、刷新及撤销正确', async () => {
+  await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#capture-target').selectOption('0:1');
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键区域-存在禁用战舰.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].groupConditions[1].allowedTypes, ['aircraft', 'cruiser', 'destroyer']);
+    assert.deepEqual(imported.waves[0].groupConditions[0], before.waves[0].groupConditions[0]);
+    assert.deepEqual(imported.waves[1], before.waves[1]);
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.equal(await page.locator('[aria-label="第1波第2组限定舰种"]').isChecked(), true);
+    assert.equal(await page.locator('[aria-label="第1波第2组允许战列舰"]').isChecked(), false);
+    for (const name of ['飞机', '巡洋舰', '驱逐舰']) {
+      assert.equal(await page.locator(`[aria-label="第1波第2组允许${name}"]`).isChecked(), true);
+    }
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
+
+test('禁用变项导入、保存与Worker计算一致，撤销恢复原条件', async () => {
+  await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键区域-区域禁用变项.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    assert.equal((await savedInput(page)).waves[0].groupConditions[0].itemsDisabled, true);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.equal(await page.locator('[aria-label="第1波第1组禁用道具"]').isChecked(), true);
+    assert.equal(await page.locator('[aria-label="第1波第2组禁用道具"]').isChecked(), false);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => document.querySelectorAll('.group-result').length === 3);
+    const first = page.locator('.group-result').first();
+    assert.match(await first.textContent(), /禁用道具/);
+    for (const text of await first.locator('.result-items').allTextContents()) {
+      assert.match(text, /灰色：不装备/); assert.match(text, /绿色：不装备/);
+    }
+    assert.deepEqual((await savedInput(page)).inventory, before.inventory);
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
+
 test('刷新保留采集来源和回退记录，未知条件不覆盖输入', async () => {
   await withPlanner(async page => {
     const before = await savedInput(page);
@@ -324,5 +504,23 @@ test('窗口隔离策略下仍能连接并抓取当前据点', async () => {
     await planner.locator('#capture-current').click();
     await planner.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
     assert.deepEqual((await savedInput(planner)).waves[0].groupConditions[0].global, { firepower: 0.24, survivability: 0, mobility: 0 });
+  });
+});
+
+test('游戏页按钮抓取带入8%时通过接口填入还原后的战力', async () => {
+  await withPlanner(async (page, context) => {
+    const html = (await readFile(new URL('./html/关键区域-存在带入百分比加成.txt', import.meta.url), 'utf8'))
+      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<div id="pacific-front-capture-bridge"[\s\S]*$/, '');
+    await context.route('https://pacificfront.worldofwarships.asia/zh-sg/operations/carry-test', route =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+    const game = await context.newPage();
+    await game.goto('https://pacificfront.worldofwarships.asia/zh-sg/operations/carry-test');
+    await game.addScriptTag({ content: await pairedScript(page) });
+    const [planner] = await Promise.all([game.waitForEvent('popup'), game.locator('#pacific-front-capture-bridge button').click()]);
+    await planner.waitForFunction(() => document.querySelector('#capture-current') && !document.querySelector('#capture-current').disabled);
+    await planner.locator('#capture-current').click();
+    await planner.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    assert.deepEqual((await savedInput(planner)).waves[0].enemies.slice(0, 4).map(enemy => enemy.power), [132, 137, 125, 121]);
+    assert.match(await planner.locator('.capture-source').textContent(), /带入.*已还原/);
   });
 });

@@ -45,6 +45,7 @@ def validate(catalog, item_catalog):
     assert rules["debuff_stacking"] == "multiplicative"
     assert abs(rules["debuff_multiplier"] ** 2 - rules["two_debuffs_multiplier"]) < 1e-12
     assert rules["battle_effect_reduction"] == {"buff_bonus_rate_multiplier": 0.5, "debuff_reduction_rate_multiplier": 0.5}
+    assert rules["battle_items_disabled_slots"] == ["standard", "special"]
     items = item_catalog["items"]
     item_ids = {item["id"] for item in items}
     assert len(item_ids) == len(items), "Duplicate item ID"

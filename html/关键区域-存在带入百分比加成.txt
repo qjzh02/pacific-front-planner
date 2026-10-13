@@ -1,0 +1,24 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><body>
+<h1 class="_pageHeaderTitle_public_1">测试行动</h1>
+<section class="_stageInfo_public_1"><h2 class="_title_public_1">阶段1</h2></section>
+<h2 class="_headerTitle_public_1">关键据点1</h2>
+<div class="_rewardValue_public_1">9999</div>
+<section class="_conditions_public_1"><h3 class="_subheader_public_1">带入</h3><div class="_bodyZone_public_1"><div class="_rowLabel_public_1"><span class="_label_public_1">敌方战力</span><span class="_pctValue_public_1">+8%</span></div></div></section>
+<section class="_enemies_public_1">
+<article class="_enemy_public_1"><span class="_powerValue_public_1 _buffed_public_1">143</span><div class="_vulns_public_1">
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _quickFire_public_1"></span></span>
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _strikeAircraft_public_1"></span></span>
+</div></article>
+<article class="_enemy_public_1"><span class="_powerValue_public_1 _buffed_public_1">148</span><div class="_vulns_public_1">
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _antiAircraftFire_public_1"></span></span>
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _smokes_public_1"></span></span>
+</div></article>
+<article class="_enemy_public_1"><span class="_powerValue_public_1 _buffed_public_1">135</span><div class="_vulns_public_1">
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _smokes_public_1"></span></span>
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _largeCaliber_public_1"></span></span>
+</div></article>
+<article class="_enemy_public_1"><span class="_powerValue_public_1 _buffed_public_1">131</span><div class="_vulns_public_1">
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _smokes_public_1"></span></span>
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _largeCaliber_public_1"></span></span>
+</div></article>
+</section></body></html>

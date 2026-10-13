@@ -16,6 +16,46 @@ const request = (ids, stock = {}, extra = {}) => ({
 const unit = (cardId, standardId = null, specialId = null) => ({ cardId, standardId, specialId });
 const evaluate = (formation, input) => evaluateFormation(formation, input, catalog, items);
 
+test('disabled items forbid both equipment slots including ignore conditions; search uses no items', () => {
+  const input = request(['missouri'], { standard_firepower: 4, special_disable_effects_power: 4, special_ignore_conditions: 4 },
+    { conditions: { itemsDisabled: true } });
+  for (const [standard, special] of [['standard_firepower', null], [null, 'special_disable_effects_power'], [null, 'special_ignore_conditions']]) {
+    assert.throws(() => evaluate([unit('missouri', standard, special), null, null, null], input), /禁用道具/);
+  }
+  assert.equal(evaluate([unit('missouri'), null, null, null], input).positions[0].ownPower, 190);
+  for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+    const result = solve(input, catalog, items, options);
+    assert.equal(result.wins, 0);
+    assert.deepEqual(result.usedItems, {});
+  }
+  assert.throws(() => solve({ ...input, conditions: { itemsDisabled: 'true' } }, catalog, items), /开关/);
+});
+
+test('disabled items are local to a group and preserve equipment for a later wave', () => {
+  const input = request(['missouri'], { standard_firepower: 1 });
+  input.enemies = input.enemies.map((enemy, i) => ({ ...enemy, active: i === 0 }));
+  input.waves = [{ enemies: input.enemies, groupConditions: [{ itemsDisabled: true }] }, { enemies: input.enemies }];
+  const result = solveAction(input, catalog, items);
+  assert.equal(result.waves[0].wins, 0);
+  assert.deepEqual(result.waves[0].groups[0].usedItems, {});
+  assert.equal(result.waves[0].remainingInventory.standard_firepower, 1);
+  assert.equal(result.waves[1].wins, 1);
+  assert.equal(result.waves[1].groups[0].usedItems.standard_firepower, 1);
+  assert.equal(result.waves[1].groups[0].conditions.itemsDisabled, false);
+});
+
+test('early healing never equips an item in a group that disables equipment', () => {
+  const input = request(['missouri'], { special_restore_health: 1 });
+  input.waves = [170, 160, 140, 165].map((power, wave) => ({
+    enemies: input.enemies.map((enemy, i) => ({ ...enemy, active: i === 0, power })),
+    groupConditions: [{ itemsDisabled: wave < 3 }],
+  }));
+  const result = solveAction(input, catalog, items);
+  assert.equal(result.wins, 3);
+  assert.deepEqual(result.usedItems, {});
+  assert.equal(result.healingRetries, 0);
+});
+
 test('50 percent buff reduction halves card bonus rates after amplification, not equipment bonuses', () => {
   const input = request(['north_carolina','helldiver_essex'], {standard_firepower:1,standard_buff_amplifier:1,special_ignore_conditions:1});
   input.conditions = {buffsReduced:true};

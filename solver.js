@@ -35,8 +35,8 @@ function context(input, catalog, itemCatalog) {
     check(number(reduction, 0, 1), '全局减益必须在0%至100%之间。');
     return [stat, reduction];
   }));
-  const conditions = { buffsDisabled: false, debuffsDisabled: false, buffsReduced: false, debuffsReduced: false, allowedTypes: null, ...input.conditions };
-  check(['buffsDisabled', 'debuffsDisabled', 'buffsReduced', 'debuffsReduced'].every(key => typeof conditions[key] === 'boolean'), '增益、减益的失效和减少50%设置必须为开关。');
+  const conditions = { buffsDisabled: false, debuffsDisabled: false, buffsReduced: false, debuffsReduced: false, itemsDisabled: false, allowedTypes: null, ...input.conditions };
+  check(['buffsDisabled', 'debuffsDisabled', 'buffsReduced', 'debuffsReduced', 'itemsDisabled'].every(key => typeof conditions[key] === 'boolean'), '战场条件的失效、削弱和禁用道具设置必须为开关。');
   check(conditions.allowedTypes === null || (Array.isArray(conditions.allowedTypes) && conditions.allowedTypes.length > 0 &&
     conditions.allowedTypes.every(type => UNIT_TYPES.includes(type)) && new Set(conditions.allowedTypes).size === conditions.allowedTypes.length), '限定舰种必须选择至少一个有效舰种，且不能重复。');
   const model = { stacking: 'additive', globalStacking: 'multiply', rounding: 'conservative', allowEqual: false, revive: false, ...input.model };
@@ -55,6 +55,7 @@ function variant(entry, position, ctx) {
   const special = entry.specialId ? ctx.itemById.get(entry.specialId) : null;
   check(!entry.standardId || standard?.slot === 'standard', '灰色道具槽位无效。');
   check(!entry.specialId || special?.slot === 'special', '绿色道具槽位无效。');
+  check(!ctx.conditions.itemsDisabled || (!entry.standardId && !entry.specialId), '本组禁用道具，不能装备灰色或绿色道具。');
   const standardParameters = standard?.parameters ?? {};
   const specialParameters = special?.parameters ?? {};
   check(!ctx.conditions.allowedTypes || ctx.conditions.allowedTypes.includes(card.unit_type), '该卡牌的舰种不符合本组限制。');
@@ -143,8 +144,8 @@ export function evaluateFormation(formation, input, catalog, itemCatalog) {
 
 function candidates(position, ctx) {
   const list = [];
-  const standards = [null, ...[...ctx.itemById.values()].filter(item => item.slot === 'standard' && ctx.inventory[item.id] > 0)];
-  const specials = [null, ...[...ctx.itemById.values()].filter(item => item.slot === 'special' && ctx.inventory[item.id] > 0)];
+  const standards = [null, ...[...ctx.itemById.values()].filter(item => !ctx.conditions.itemsDisabled && item.slot === 'standard' && ctx.inventory[item.id] > 0)];
+  const specials = [null, ...[...ctx.itemById.values()].filter(item => !ctx.conditions.itemsDisabled && item.slot === 'special' && ctx.inventory[item.id] > 0)];
   for (const selected of ctx.selected.values()) {
     const card = ctx.cardById.get(selected.cardId);
     if (ctx.conditions.allowedTypes && !ctx.conditions.allowedTypes.includes(card.unit_type)) continue;
@@ -359,7 +360,7 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
     const candidates = [];
     let groupOffset = 0, healingStock = input.inventory?.[healingItem.id] ?? 0;
     best.waves.forEach((wave, waveIndex) => wave.groups.forEach(group => {
-      if (waveIndex < failedWave && healingStock > 0) group.positions.forEach(position => {
+      if (waveIndex < failedWave && healingStock > 0 && !group.conditions.itemsDisabled) group.positions.forEach(position => {
         if (lowHealth.has(position.cardId) && position.originalHealth > 0 && position.originalHealth < 3 && !position.specialId)
           candidates.push({ index: groupOffset, waveIndex, position: position.position, cardId: position.cardId });
       });

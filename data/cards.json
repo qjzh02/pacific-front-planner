@@ -40,6 +40,10 @@
       "buff_bonus_rate_multiplier": 0.5,
       "debuff_reduction_rate_multiplier": 0.5
     },
+    "battle_items_disabled_slots": [
+      "standard",
+      "special"
+    ],
     "debuff_requires_matching_weakness": true,
     "health_stat_multipliers": {
       "3": 1.0,
@@ -66,6 +70,7 @@
       "debuff_stacking",
       "two_debuffs_multiplier",
       "battle_effect_reduction",
+      "battle_items_disabled_slots",
       "enemy_above_own_minimum"
     ],
     "in_game_rules_read": [

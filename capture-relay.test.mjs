@@ -53,6 +53,16 @@ test('请求、读取、结果只按当前请求编号返回，不复用旧结�
     assert.equal((await (await call('status')).json()).result, null);
     assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-a', requestId: 'request-c',
       snapshot: { ...snapshot, source: { ...snapshot.source, enemyPowerIncrease: -0.1 } } } })).status, 400);
+    for (const source of [
+      { ...snapshot.source, ignoredEnemyPowerIncrease: 0.08 },
+      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncrease: 0.1 },
+    ]) {
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-a', requestId: 'request-c',
+        snapshot: { ...snapshot, source } } })).status, 400);
+    }
+    const restored = { ...snapshot, source: { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncrease: 0.08 } };
+    assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-a', requestId: 'request-c', snapshot: restored } })).status, 200);
+    assert.deepEqual((await (await call('status')).json()).result.snapshot, restored);
   });
 });
 
@@ -67,5 +77,21 @@ test('拒绝无效结果及超大请求，游戏页接管后拒绝旧连接', as
     assert.equal((await call('game?client=client-a', { game: true })).status, 409);
     await call('game', { game: true, body: { type: 'disconnect', clientId: 'client-b' } });
     assert.equal((await (await call('status')).json()).connected, false);
+  });
+});
+
+test('接口接受有效区域舰种限制，拒绝空值、重复或未知类型', async () => {
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'client-types' } });
+    await call('request', { body: { requestId: 'request-types' } });
+    for (const allowedTypes of [[], ['unknown'], ['cruiser', 'cruiser'], 'battleship']) {
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-types', requestId: 'request-types',
+        snapshot: { ...snapshot, condition: { ...snapshot.condition, allowedTypes } } } })).status, 400);
+    }
+    assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-types', requestId: 'request-types',
+      snapshot: { ...snapshot, condition: { ...snapshot.condition, itemsDisabled: 'true' } } } })).status, 400);
+    const restricted = { ...snapshot, condition: { ...snapshot.condition, allowedTypes: ['aircraft', 'cruiser', 'destroyer'], itemsDisabled: true } };
+    assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-types', requestId: 'request-types', snapshot: restricted } })).status, 200);
+    assert.deepEqual((await (await call('status')).json()).result.snapshot, restricted);
   });
 });

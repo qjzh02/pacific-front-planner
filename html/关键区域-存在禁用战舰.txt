@@ -1,0 +1,26 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><body>
+<h1 class="_pageHeaderTitle_public_1">测试行动</h1>
+<section class="_stageInfo_public_1"><h2 class="_title_public_1">阶段3</h2></section>
+<h2 class="_headerTitle_public_1">关键据点6</h2>
+<div class="_rewardValue_public_1">9999</div>
+<section class="_conditions_public_1"><h3 class="_subheader_public_1">区域</h3><div class="_bodyZone_public_1"><div class="_section_public_1"><span class="_label_public_1">禁用的单位类型</span><div class="_iconsRow_public_1">
+<span class="_iconTooltip_public_1"><img class="_shipIcon_public_1" src="/assets/icon_battleship_standard-public.webp"></span>
+</div></div></div></section>
+<section class="_enemies_public_1">
+<article class="_enemy_public_1"><span class="_powerValue_public_1">161</span><div class="_vulns_public_1">
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _quickFire_public_1"></span></span>
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _strikeAircraft_public_1"></span></span>
+</div></article>
+<article class="_enemy_public_1"><span class="_powerValue_public_1">125</span><div class="_vulns_public_1">
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _antiAircraftFire_public_1"></span></span>
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _smokes_public_1"></span></span>
+</div></article>
+<article class="_enemy_public_1"><span class="_powerValue_public_1">166</span><div class="_vulns_public_1">
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _smokes_public_1"></span></span>
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _largeCaliber_public_1"></span></span>
+</div></article>
+<article class="_enemy_public_1"><span class="_powerValue_public_1">169</span><div class="_vulns_public_1">
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _smokes_public_1"></span></span>
+<span class="_vuln_public_1"><span class="_vulnIcon_public_1 _largeCaliber_public_1"></span></span>
+</div></article>
+</section></body></html>

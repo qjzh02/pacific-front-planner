@@ -1,6 +1,6 @@
 {
   "name": "pacific-front-planner",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "战舰世界太平洋战线本地阵容规划器",
   "type": "module",
