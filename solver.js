@@ -14,7 +14,15 @@ function context(input, catalog, itemCatalog) {
     check(number(enemy.power, 0, 1000000), `敌军${index + 1}战力必须是有效的非负数。`);
     check(Array.isArray(enemy.weaknesses) && enemy.weaknesses.length <= 2, `敌军${index + 1}最多有两种弱点。`);
     check(new Set(enemy.weaknesses).size === enemy.weaknesses.length && enemy.weaknesses.every(id => effectById.get(id)?.kind === 'debuff'), '存在无效或重复的弱点。');
-    return { ...enemy };
+    const source = input.conditions?.captureSource;
+    check(!source?.enemyPowerIncreases || enemy.powerIncrease !== undefined,
+      '本组旧采集数据缺少每个敌军的区域增益，请重新采集后计算。');
+    const powerIncrease = enemy.powerIncrease ?? source?.enemyPowerIncrease ?? 0;
+    check([0, 0.08, 0.16].includes(powerIncrease), `敌军${index + 1}区域战力增益无效或比例尚未核对。`);
+    const basePower = powerIncrease ? Math.round(enemy.power / (1 + powerIncrease)) : enemy.power;
+    check(!powerIncrease || (Number.isInteger(enemy.power) && Math.round(basePower * (1 + powerIncrease)) === enemy.power),
+      `敌军${index + 1}显示战力无法还原整数原战力，请核对输入或重新采集。`);
+    return { ...enemy, powerIncrease, basePower };
   });
   check(enemies.some(enemy => enemy.active), '请至少启用一个敌军位置。');
   check(Array.isArray(input.cards) && input.cards.length > 0 && input.cards.length <= cardById.size, '请勾选有效数量的卡牌（至少一张，不超过卡牌目录数量）。');
@@ -61,7 +69,7 @@ function variant(entry, position, ctx) {
   check(!ctx.conditions.allowedTypes || ctx.conditions.allowedTypes.includes(card.unit_type), '该卡牌的舰种不符合本组限制。');
   check(selected.health > 0 || (ctx.model.revive && specialParameters.health_delta), '零生命卡牌不能出战；如游戏允许复活，请在设置中启用。');
   const health = Math.min(3, selected.health + (specialParameters.health_delta ?? 0));
-  const left = [0, 0, 0], right = [0, 0, 0], debuffs = [1, 1, 1];
+  const left = [0, 0, 0], right = [0, 0, 0], debuffs = [0, 0, 0];
   const outgoing = [];
   for (const effect of card.effects) {
     const type = ctx.effectById.get(effect.type);
@@ -77,7 +85,7 @@ function variant(entry, position, ctx) {
         (specialParameters.bypass_weakness_match || ctx.enemies[target].weaknesses.includes(type.id))) {
       const multiplier = 1 - (1 - type.multiplier) * (specialParameters.reduction_rate_multiplier ?? 1) *
         (ctx.conditions.debuffsReduced && !specialParameters.ignore_battle_conditions ? 0.5 : 1);
-      debuffs[target - position + 1] *= multiplier;
+      debuffs[target - position + 1] += 1 - multiplier;
       outgoing.push({ kind: 'debuff', target, name: type.weakness_name, multiplier });
     }
   }
@@ -106,12 +114,17 @@ function positionResult(position, left, current, right, ctx, explain = false) {
     });
     ownRaw = Math.max(0, STATS.reduce((sum, stat) => sum + stats[stat], 0) - 10);
   }
-  const enemyRaw = enemy.power * (left?.debuffs[2] ?? 1) * (current?.debuffs[1] ?? 1) * (right?.debuffs[0] ?? 1);
+  const debuffMultiplier = 1 - ((left?.debuffs[2] ?? 0) + (current?.debuffs[1] ?? 0) + (right?.debuffs[0] ?? 0));
+  const increased = enemy.powerIncrease > 0 && debuffMultiplier < 1;
+  // 增益和各来源减益均按原战力加算；只保留已实测组合的四舍五入，其余沿用所选取整设置。
+  const calibrated = increased && enemy.powerIncrease === 0.16 && Math.abs(debuffMultiplier - 0.8) < 1e-8;
+  const enemyRaw = increased ? enemy.basePower * (debuffMultiplier + enemy.powerIncrease) : enemy.power * debuffMultiplier;
   const ownPower = ctx.model.rounding === 'conservative' ? Math.floor(ownRaw + 1e-8) : ownRaw;
-  const enemyPower = ctx.model.rounding === 'conservative' ? Math.ceil(enemyRaw - 1e-8) : enemyRaw;
+  const enemyPower = calibrated ? Math.round(enemyRaw) : ctx.model.rounding === 'conservative' ? Math.ceil(enemyRaw - 1e-8) : enemyRaw;
   const margin = current && enemy.active ? ownPower - enemyPower : -enemyPower;
   const win = Boolean(current && enemy.active && (ctx.model.allowEqual ? margin >= -1e-8 : margin > 1e-8));
   const result = { position, active: enemy.active, ownPower, enemyPower, ownRaw, enemyRaw, stats, margin, win,
+    enemyBasePower: enemy.basePower, enemyPowerIncrease: enemy.powerIncrease, enemyPowerRoundingAssumed: increased && !calibrated,
     cardId: current?.card.id ?? null, name: current?.card.name ?? null, health: current?.health ?? null,
     originalHealth: current?.originalHealth ?? null, standardId: current?.standardId ?? null, specialId: current?.specialId ?? null };
   if (explain) result.effects = [left, current, right].flatMap(source => source?.outgoing
@@ -218,7 +231,7 @@ export function solve(input, catalog, itemCatalog, options = {}) {
   const stock = ctx.itemIds.map(id => ctx.inventory[id]);
   const optimistic = choices.map(list => ({
     left: STATS.map((_, index) => Math.max(0, ...list.map(unit => unit?.left[index] ?? 0))),
-    debuffs: [Math.min(1, ...list.map(unit => unit?.debuffs[0] ?? 1)), 1, 1],
+    debuffs: [Math.max(0, ...list.map(unit => unit?.debuffs[0] ?? 0)), 0, 0],
   }));
   let best = null, explored = 0;
   const initial = { lineup: [], counts: stock.map(() => 0), mask: 0, wins: 0, cost: 0, specialCount: 0, units: 0, strength: 0, margins: [] };
@@ -301,17 +314,21 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
   });
   const totalGroups = waveGroups.reduce((sum, groups) => sum + groups.length, 0);
   let workExplored = 0;
-  function plan(prefix = [], attempt = 0) {
+  function plan(prefix = [], attempt = 0, priority = null) {
     const cards = input.cards.map(card => ({ ...card }));
     const inventory = Object.fromEntries(itemCatalog.items.map(item => [item.id, input.inventory?.[item.id] ?? 0]));
     let wins = 0, targetCount = 0, itemCount = 0, explored = 0, completedGroups = 0;
     const usedItems = {}, waves = [], earlyHealing = [];
     waveGroups.forEach((groups, waveIndex) => {
       const deployed = new Set();
-      const results = groups.map(({ enemies, global, conditions }, groupIndex) => {
+      const order = groups.map((_, i) => i);
+      if (priority?.waveIndex === waveIndex) order.unshift(...order.splice(order.indexOf(priority.groupIndex), 1));
+      const results = order.map(groupIndex => {
+        const { enemies, global, conditions } = groups[groupIndex];
         const available = cards.filter(card => !deployed.has(card.cardId));
         const groupInput = { ...input, enemies, global, conditions, cards: available, inventory };
-        const progressContext = { wave: waveIndex + 1, group: groupIndex + 1, completedGroups, totalGroups, phase: attempt ? 'healing' : 'initial', attempt };
+        const progressContext = { wave: waveIndex + 1, group: groupIndex + 1, completedGroups, totalGroups,
+          phase: priority ? 'repair' : attempt ? 'healing' : 'initial', attempt: priority?.attempt ?? attempt };
         let result;
         if (prefix[completedGroups]) {
           result = { ...prefix[completedGroups], ...evaluateFormation(prefix[completedGroups].formation,
@@ -339,7 +356,7 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
         completedGroups++;
         options.onProgress?.({ ...progressContext, stage: 4, explored, completedGroups });
         return { ...result, group: groupIndex + 1 };
-      });
+      }).sort((a, b) => a.group - b.group);
       waves.push({ wave: waveIndex + 1, groups: results, wins: results.reduce((sum, group) => sum + group.wins, 0),
         targetCount: results.reduce((sum, group) => sum + group.targetCount, 0),
         remainingCards: cards.map(card => ({ ...card })), remainingInventory: { ...inventory } });
@@ -380,5 +397,32 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
     }
     if (!improved) break;
   }
-  return { ...best, explored: workExplored, healingRetries: attempts };
+  let groupRepairRetries = 0;
+  const groupRepairs = [], tried = new Set();
+  // shortcut: 最多4次为失败后组预留单位；此前波次固定，不枚举所有组间配队或跨波用卡。
+  while (groupRepairRetries < 4 && best.wins < best.targetCount) {
+    const flat = best.waves.flatMap(wave => wave.groups);
+    let waveOffset = 0;
+    const candidates = best.waves.flatMap((wave, waveIndex) => {
+      const offset = waveOffset;
+      waveOffset += wave.groups.length;
+      return wave.groups.filter(group => group.group > 1 && group.wins < group.targetCount && !tried.has(`${waveIndex}:${group.group}`))
+        .map(group => ({ waveIndex, groupIndex: group.group - 1, offset }));
+    });
+    let improved = false;
+    for (const candidate of candidates) {
+      if (groupRepairRetries >= 4) break;
+      tried.add(`${candidate.waveIndex}:${candidate.groupIndex + 1}`);
+      const alternative = plan(flat.slice(0, candidate.offset), 0, { ...candidate, attempt: ++groupRepairRetries });
+      if (alternative.wins > best.wins) {
+        best = alternative;
+        groupRepairs.push({ wave: candidate.waveIndex + 1, group: candidate.groupIndex + 1 });
+        improved = true;
+        break;
+      }
+    }
+    if (!improved) break;
+  }
+  return { ...best, planningMode: groupRepairs.length ? 'sequential-group-repair' : best.planningMode,
+    groupRepairs, groupRepairRetries, explored: workExplored, healingRetries: attempts };
 }

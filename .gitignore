@@ -39,3 +39,9 @@ html/*
 !html/关键区域-全域禁用变项.txt
 !html/关键区域-区域条件与全域条件不识别1.txt
 !html/关键区域-全域不识别2.txt
+!html/关键区域-巡洋舰战力提升.txt
+!html/关键区域-驱逐舰战力提升.txt
+!html/关键区域-敌军3存在未知单位类型.txt
+test-fixtures/*
+!test-fixtures/action-resource-regression.json
+tmp/

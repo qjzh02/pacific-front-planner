@@ -34,8 +34,8 @@
     "random_offset_max": 10,
     "buff_multiplier": 1.3,
     "debuff_multiplier": 0.8,
-    "debuff_stacking": "multiplicative",
-    "two_debuffs_multiplier": 0.64,
+    "debuff_stacking": "additive",
+    "two_debuffs_multiplier": 0.6,
     "battle_effect_reduction": {
       "buff_bonus_rate_multiplier": 0.5,
       "debuff_reduction_rate_multiplier": 0.5
@@ -44,6 +44,12 @@
       "standard",
       "special"
     ],
+    "enemy_power_increase_with_single_debuff": {
+      "increase_rate": 0.16,
+      "debuff_rate": 0.2,
+      "formula": "round(base_power * (1 + increase_rate - debuff_rate))"
+    },
+    "enemy_power_increase_other_debuff_combinations": "base_power * (1 + increase_rate - sum(debuff_rates))",
     "debuff_requires_matching_weakness": true,
     "health_stat_multipliers": {
       "3": 1.0,
@@ -71,8 +77,46 @@
       "two_debuffs_multiplier",
       "battle_effect_reduction",
       "battle_items_disabled_slots",
+      "enemy_power_increase_with_single_debuff",
+      "enemy_power_increase_other_debuff_combinations",
       "enemy_above_own_minimum"
     ],
+    "user_confirmed_enemy_power_increase": {
+      "base": [
+        138,
+        141,
+        137,
+        137
+      ],
+      "increased": [
+        160,
+        164,
+        159,
+        159
+      ],
+      "after_debuff": [
+        132,
+        164,
+        132,
+        132
+      ],
+      "debuff_rates": [
+        0.2,
+        0,
+        0.2,
+        0.2
+      ],
+      "sources": [
+        "sources/enemy-power-calibration.json"
+      ]
+    },
+    "user_confirmed_enemy_debuff_stacking": {
+      "date": "2026-10-14",
+      "source": "实测规则更正：敌方增益和各次减益均按原战力加算；其他取整仍待核对。",
+      "formula": "base_power * (1 + increase_rate - sum(debuff_rates))",
+      "rounding_confirmed": false
+    },
+    "model_assumptions": {},
     "in_game_rules_read": [
       "random_offset_min",
       "random_offset_max",

@@ -10,6 +10,10 @@
 
 ## 计算规则
 
+敌方增益和各来源减益均在原战力上按幅度加算，公式为 `base_power * (1 + increase_rate - sum(debuff_rates))`；两次普通减益为×0.6。只有区域＋16%与一次普通20%减益的四舍五入已实测，其他组合沿用所选取整设置并标明待核对。
+
+行动失败后最多4次为后组优先分配本波资源，固定此前波次并重算该波及后续。输出组号、条件和执行顺序仍保持原序，同波不重复部署，结果记录 `groupRepairs`。公开完整行动回归使用 `test-fixtures/action-resource-regression.json` 人工单位及输入，不提交玩家实际存档。
+
 区分实测确认、游戏规则和模型假设；未确认字段保留 `null`。修改规则时同时检查 `evaluateFormation`、候选筛选、`solve`、`solveAction`、保存迁移和结果说明，并补充能验证实际结算的测试。
 
 方向按界面从左到右，不反转，不跨组，不环绕。各波各组独立保存条件，同一卡牌每波仅部署一次。道具只消耗模拟库存，不改玩家输入。
@@ -28,13 +32,15 @@
 
 带入敌方战力＋8%的整数值按 `round(显示值 / 1.08)` 还原，必须有加成标记且重新加成可复现显示值；比例只写入 `captureSource.ignoredEnemyPowerIncrease`。其他比例或区域与带入叠加未经核对，保持拒绝导入，不推及其他计算取整规则。
 
+区域舰种提升按敌军卡面类型保存每位敌军的 `powerIncrease`，以原战力计算减益；无减益保留显示值，旧舰种采集缺少该字段应重新采集。已核对的带入舰种＋16%只还原匹配者，来源保存 `ignoredEnemyPowerIncreases`；其他比例、与全体带入或区域提升叠加继续拒绝。岸防炮只用于敌军类型识别，不扩展我方卡牌或可上阵舰种。
+
 ## 提交前检查
 
 ```sh
 python build_database.py
 python test_database.py
 python test_release.py
-node --test --test-isolation=none solver.test.mjs capture-relay.test.mjs
+node --test --test-isolation=none solver.test.mjs capture-relay.test.mjs action-regression.test.mjs
 ```
 
 页面和采集修改还应运行 `capture.test.mjs` 或验证对应浏览器交互。`start.ps1` 保持UTF-8带BOM，兼容Windows PowerShell 5.1。Pull Request描述问题、最终行为和实际验证结果。

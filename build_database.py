@@ -42,10 +42,15 @@ def validate(catalog, item_catalog):
     rules = catalog["rules"]
     assert rules["buff_multiplier"] == 1.3
     assert rules["debuff_multiplier"] == 0.8
-    assert rules["debuff_stacking"] == "multiplicative"
-    assert abs(rules["debuff_multiplier"] ** 2 - rules["two_debuffs_multiplier"]) < 1e-12
+    assert rules["debuff_stacking"] == "additive"
+    assert abs(1 - 2 * (1 - rules["debuff_multiplier"]) - rules["two_debuffs_multiplier"]) < 1e-12
     assert rules["battle_effect_reduction"] == {"buff_bonus_rate_multiplier": 0.5, "debuff_reduction_rate_multiplier": 0.5}
     assert rules["battle_items_disabled_slots"] == ["standard", "special"]
+    assert rules["enemy_power_increase_with_single_debuff"] == {
+        "increase_rate": 0.16, "debuff_rate": 0.2,
+        "formula": "round(base_power * (1 + increase_rate - debuff_rate))",
+    }
+    assert rules["enemy_power_increase_other_debuff_combinations"] == "base_power * (1 + increase_rate - sum(debuff_rates))"
     items = item_catalog["items"]
     item_ids = {item["id"] for item in items}
     assert len(item_ids) == len(items), "Duplicate item ID"
@@ -132,7 +137,7 @@ def build():
         descriptions = []
         for effect in card["effects"]:
             effect_type = effect_types[effect["type"]]
-            amount = "对应属性×1.3" if effect_type["kind"] == "buff" else "匹配弱点后总战力×0.8"
+            amount = "对应属性×1.3" if effect_type["kind"] == "buff" else "匹配弱点后按敌方原战力降低20%，幅度加算"
             effect_name = effect_type["weakness_name"] or effect_type["icon_label"]
             descriptions.append(f"{effect_name} → {DIRECTIONS[effect['direction']]}；{amount}")
         rows.append(f"| {card['name']} | {UNIT_TYPES[card['unit_type']]} | {card['firepower']} | {card['survivability']} | {card['mobility']} | {card['power_min']} | {' | '.join(descriptions)} | {card['source_id']} 行{card['source_row']}列{card['source_column']} |")
@@ -147,7 +152,7 @@ def build():
         quantity = item_catalog["inventory_snapshot"]["quantities"][item["id"]]
         item_rows.append(f"| {slot_label} | {item['position']} | {item['label']} | {item['description']} | {quantity} | {enabled} |")
     item_rows.extend(["", "效果翻倍按幅度计算：友方增益30%→60%（×1.6），敌方减益20%→40%（×0.6）。",
-                      "两次普通减益为×0.64；一次翻倍减益为×0.6；普通与翻倍减益叠加为×0.48；两次翻倍减益为×0.36。",
+                      "各来源减益按原战力加算：两次普通减益为×0.6；一次翻倍减益为×0.6；普通与翻倍减益叠加为×0.4；两次翻倍减益为×0.2。敌方有增益时，最终战力=原战力×（1＋增益比例－减益幅度合计）。",
                       "", "同一属性的道具与友军正向增幅按实测确认加算；全局减益的结算顺序、零生命单位能否被恢复尚待确认。"])
     (ROOT / "ITEM_CATALOG.md").write_text("\n".join(item_rows) + "\n", encoding="utf-8")
     print(f"Verified {card_count} cards, {effect_count} effects, {item_count} items; SQLite integrity and foreign keys OK.")

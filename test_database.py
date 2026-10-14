@@ -37,7 +37,9 @@ class ItemCatalogTests(unittest.TestCase):
         regular = self.connection.execute(
             "SELECT value_json FROM rules WHERE key='two_debuffs_multiplier'"
         ).fetchone()
-        self.assertEqual(json.loads(regular[0]), 0.64)
+        self.assertEqual(json.loads(regular[0]), 0.6)
+        stacking = self.connection.execute("SELECT value_json FROM rules WHERE key='debuff_stacking'").fetchone()
+        self.assertEqual(json.loads(stacking[0]), "additive")
 
     def test_card_catalog_is_preserved(self):
         self.assertEqual(self.connection.execute("SELECT COUNT(*) FROM cards").fetchone()[0], 30)
@@ -61,6 +63,12 @@ class ItemCatalogTests(unittest.TestCase):
         self.assertTrue(rules["ignore_conditions_bypasses_buff_reduction"])
         self.assertTrue(rules["ignore_conditions_bypasses_debuff_reduction"])
         self.assertEqual(rules["battle_items_disabled_slots"], ["standard", "special"])
+        self.assertEqual(rules["enemy_power_increase_with_single_debuff"], {
+            "increase_rate": 0.16, "debuff_rate": 0.2,
+            "formula": "round(base_power * (1 + increase_rate - debuff_rate))",
+        })
+        self.assertEqual(rules["enemy_power_increase_other_debuff_combinations"],
+                         "base_power * (1 + increase_rate - sum(debuff_rates))")
 
     def test_special_item_effects(self):
         items = {key: json.loads(value) for key, value in self.connection.execute(

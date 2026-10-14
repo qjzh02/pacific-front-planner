@@ -18,7 +18,7 @@ class FixtureParser(HTMLParser):
             if name == "class":
                 assert all(re.fullmatch(r"_[A-Za-z0-9]+_public_1", c) for c in value.split()), value
             elif name == "src":
-                assert re.fullmatch(r"/assets/(?:icon_(?:battleship|cruiser|destroyer)_standard|card_ship_plane)-public\.webp", value), value
+                assert re.fullmatch(r"/assets/(?:icon_(?:battleship|cruiser|destroyer)_standard|card_ship_(?:plane|coastal_artillery))-public\.webp", value), value
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
@@ -65,7 +65,7 @@ class PublicReleaseTests(unittest.TestCase):
 
     def test_capture_fixtures_have_only_artificial_markup(self):
         files = list((ROOT / "html").glob("*.txt")) + list((ROOT / "html").glob("*.html"))
-        self.assertEqual(len(files), 11)
+        self.assertEqual(len(files), 14)
         for path in files:
             content = path.read_text(encoding="utf-8")
             self.assertLess(len(content), 6000)
@@ -75,6 +75,15 @@ class PublicReleaseTests(unittest.TestCase):
 
     def test_windows_launcher_keeps_utf8_bom(self):
         self.assertTrue((ROOT / "start.ps1").read_bytes().startswith(b"\xef\xbb\xbf"))
+
+    def test_calibration_provenance_and_action_fixture_are_public_records(self):
+        catalog = json.loads((ROOT / "data/cards.json").read_text(encoding="utf-8"))
+        sources = catalog["rule_sources"]["user_confirmed_enemy_power_increase"]["sources"]
+        self.assertEqual(sources, ["sources/enemy-power-calibration.json"])
+        self.assertEqual(json.loads((ROOT / sources[0]).read_text(encoding="utf-8"))["kind"], "public_transcription")
+        fixture = json.loads((ROOT / "test-fixtures/action-resource-regression.json").read_text(encoding="utf-8"))
+        self.assertEqual(fixture["kind"], "synthetic")
+        self.assertTrue(all(card["id"].startswith("test_card_") for card in fixture["catalog"]["cards"]))
 
 
 if __name__ == "__main__":

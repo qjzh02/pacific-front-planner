@@ -151,6 +151,157 @@ test('区域敌方战力提升直接使用已提升数值，不重复放大', as
   });
 });
 
+test('区域舰种战力提升保留显示值，仅记录目标舰种与比例', async () => {
+  for (const [file, type, powers] of [
+    ['巡洋舰', 'cruiser', [181, 180, 157, 151]],
+    ['驱逐舰', 'destroyer', [160, 164, 159, 159]],
+  ]) {
+    await withSample(`./html/关键区域-${file}战力提升.txt`, async page => {
+      const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+      assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), powers);
+      assert.deepEqual(snapshot.source.enemyPowerIncreases, [{ type, rate: 0.16 }]);
+      assert.deepEqual(snapshot.enemies.map(enemy => enemy.powerIncrease), type === 'cruiser' ? [0.16, 0.16, 0.16, 0] : [0.16, 0.16, 0.16, 0.16]);
+      assert.equal(snapshot.source.enemyPowerIncrease, undefined);
+      assert.deepEqual(snapshot.condition.global, { firepower: 0, survivability: 0, mobility: 0 });
+      assert.equal(snapshot.condition.allowedTypes, null);
+    });
+  }
+});
+
+test('岸防炮敌军不受驱逐舰区域或带入加成影响，真正未知类型仍拒绝', async () => {
+  await withSample('./html/关键区域-敌军3存在未知单位类型.txt', async page => {
+    const regional = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(regional.enemies.map(enemy => enemy.power), [215, 202, 167, 175]);
+    assert.deepEqual(regional.enemies.map(enemy => enemy.powerIncrease), [0.16, 0.16, 0, 0]);
+    assert.deepEqual(regional.source.enemyPowerIncreases, [{ type: 'destroyer', rate: 0.16 }]);
+    assert.deepEqual(regional.condition.global, { firepower: 0, survivability: 0, mobility: 0 });
+    assert.equal(regional.source.stage, 3);
+    assert.equal(regional.source.keypoint, 5);
+    assert.equal(regional.enemies[2].weaknesses.length, 2);
+    const carried = await page.evaluate(() => {
+      [...sample.querySelectorAll('[class*="_subheader_"]')].find(node => node.textContent.trim() === '区域').textContent = '带入';
+      return PacificFrontCapture.readSnapshot(sample);
+    });
+    assert.deepEqual(carried.enemies.map(enemy => enemy.power), [185, 174, 167, 175]);
+    assert.deepEqual(carried.source.ignoredEnemyPowerIncreases, [{ type: 'destroyer', rate: 0.16 }]);
+    assert.equal(carried.source.enemyPowerIncreases, undefined);
+    const errors = await page.evaluate(() => {
+      const icon = sample.querySelectorAll('[class*="_enemies_"] [class*="_cardTypeIcon_"]')[2];
+      icon.src = 'https://example.invalid/card_ship_unknown-test.webp';
+      const header = [...sample.querySelectorAll('[class*="_subheader_"]')].at(-1);
+      return ['区域', '带入'].map(label => {
+        header.textContent = label;
+        try { PacificFrontCapture.readSnapshot(sample); } catch (error) { return error.message; }
+      });
+    });
+    assert.match(errors[0], /敌军3.*未知单位类型.*区域/);
+    assert.match(errors[1], /敌军3.*未知单位类型.*带入/);
+  });
+});
+
+test('带入舰种16%只还原受影响敌军，覆盖两组已核对的原战力', async () => {
+  for (const [file, type, expected] of [
+    ['巡洋舰', 'cruiser', [156, 155, 135, 151]],
+    ['驱逐舰', 'destroyer', [138, 141, 137, 137]],
+  ]) {
+    await withSample(`./html/关键区域-${file}战力提升.txt`, async page => {
+      const snapshot = await page.evaluate(() => {
+        // 同结构改为带入栏目，原战力预期来自用户实测；未执行样本脚本。
+        [...sample.querySelectorAll('[class*="_subheader_"]')].find(node => node.textContent.trim() === '区域').textContent = '带入';
+        return PacificFrontCapture.readSnapshot(sample);
+      });
+      assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), expected);
+      assert.deepEqual(snapshot.source.ignoredEnemyPowerIncreases, [{ type, rate: 0.16 }]);
+      assert.equal(snapshot.source.enemyPowerIncreases, undefined);
+      if (type === 'cruiser') {
+        const multiple = await page.evaluate(() => {
+          const section = sample.querySelector('[class*="_conditions_"] [class*="_section_"]');
+          const row = section.querySelector('[class*="_statRow_"]').cloneNode(true);
+          row.querySelector('img').src = 'https://example.invalid/icon_destroyer_standard-test.webp';
+          row.querySelector('[class*="_statLabel_"]').textContent = '驱逐舰'; section.append(row);
+          const fourth = sample.querySelectorAll('[class*="_enemies_"] [class*="_powerValue_"]')[3];
+          fourth.textContent = '175'; fourth.classList.add('_buffed_test');
+          return PacificFrontCapture.readSnapshot(sample);
+        });
+        assert.deepEqual(multiple.enemies.map(enemy => enemy.power), expected);
+        assert.deepEqual(multiple.source.ignoredEnemyPowerIncreases, [{ type: 'cruiser', rate: 0.16 }, { type: 'destroyer', rate: 0.16 }]);
+      }
+    });
+  }
+});
+
+test('舰种提升支持多个已知类型，拒绝重复、未知、不一致及未核对带入比例', async () => {
+  await withSample('./html/关键区域-巡洋舰战力提升.txt', async page => {
+    const result = await page.evaluate(() => {
+      const section = sample.querySelector('[class*="_conditions_"] [class*="_section_"]');
+      const row = section.querySelector('[class*="_statRow_"]');
+      const second = row.cloneNode(true);
+      second.querySelector('img').src = 'https://example.invalid/icon_destroyer_standard-test.webp';
+      second.querySelector('[class*="_statLabel_"]').textContent = '驱逐舰';
+      section.append(second);
+      const multiple = PacificFrontCapture.readSnapshot(sample).source.enemyPowerIncreases;
+      const otherTypes = [];
+      second.remove();
+      const icon = row.querySelector('img'), label = row.querySelector('[class*="_statLabel_"]');
+      const original = icon.src;
+      for (const [type, name, filename] of [['battleship', '战列舰', 'icon_battleship_standard-test.webp'],
+        ['aircraft', '飞机', 'card_ship_plane-test.webp']]) {
+        icon.src = `https://example.invalid/${filename}`; label.textContent = name;
+        otherTypes.push(PacificFrontCapture.readSnapshot(sample).source.enemyPowerIncreases[0].type);
+      }
+      icon.src = original; label.textContent = '巡洋舰'; section.append(second);
+      const errors = [];
+      const run = () => { try { PacificFrontCapture.readSnapshot(sample); } catch (error) { errors.push(error.message); } };
+      second.querySelector('img').src = row.querySelector('img').src;
+      second.querySelector('[class*="_statLabel_"]').textContent = '巡洋舰'; run();
+      second.remove();
+      icon.src = 'https://example.invalid/icon_submarine_standard-test.webp'; run();
+      icon.src = original; label.textContent = '驱逐舰'; run(); label.textContent = '巡洋舰';
+      const pct = row.querySelector('[class*="_pctValue_"]');
+      pct.textContent = '-16%'; run(); pct.textContent = '+16%';
+      const header = sample.querySelector('[class*="_conditions_"] [class*="_subheader_"]');
+      header.textContent = '带入'; pct.textContent = '+12%'; run(); pct.textContent = '+16%';
+      header.textContent = '全域';
+      const ignored = PacificFrontCapture.readSnapshot(sample);
+      return { multiple, otherTypes, errors, ignored };
+    });
+    assert.deepEqual(result.multiple, [{ type: 'cruiser', rate: 0.16 }, { type: 'destroyer', rate: 0.16 }]);
+    assert.equal(result.errors.length, 5);
+    assert.deepEqual(result.otherTypes, ['battleship', 'aircraft']);
+    assert.equal(result.ignored.source.enemyPowerIncreases, undefined);
+    assert.deepEqual(result.ignored.enemies.map(enemy => enemy.power), [181, 180, 157, 151]);
+    assert.match(result.errors[0], /重复/);
+    assert.match(result.errors[1], /未知/);
+    assert.match(result.errors[2], /不一致/);
+    assert.match(result.errors[3], /比例/);
+    assert.match(result.errors[4], /带入.*舰种.*未核对/);
+  });
+});
+
+test('带入舰种还原拒绝未知敌军类型、缺失加成标记、不一致数值及区域叠加', async () => {
+  await withSample('./html/关键区域-巡洋舰战力提升.txt', async page => {
+    const errors = await page.evaluate(() => {
+      const header = sample.querySelector('[class*="_conditions_"] [class*="_subheader_"]');
+      header.textContent = '带入';
+      const board = sample.querySelector('[class*="_enemies_"]');
+      const icon = board.querySelector('[class*="_cardTypeIcon_"]'), power = board.querySelector('[class*="_powerValue_"]');
+      const src = icon.src, classes = power.className, value = power.textContent;
+      const errors = [], run = () => { try { PacificFrontCapture.readSnapshot(sample); } catch (error) { errors.push(error.message); } };
+      icon.src = 'https://example.invalid/icon_submarine_standard-test.webp'; run(); icon.src = src;
+      power.className = classes.replace('_buffed_', '_normal_'); run(); power.className = classes;
+      power.textContent = '4'; run(); power.textContent = value;
+      const regionHeader = header.cloneNode(true); regionHeader.textContent = '区域';
+      header.parentElement.append(regionHeader, header.nextElementSibling.cloneNode(true)); run();
+      return errors;
+    });
+    assert.equal(errors.length, 4);
+    assert.match(errors[0], /敌军.*类型/);
+    assert.match(errors[1], /加成标记/);
+    assert.match(errors[2], /还原/);
+    assert.match(errors[3], /叠加/);
+  });
+});
+
 test('已经受我方减益的敌军战力拒绝当作初始值导入', async () => {
   await withSample('./html/关键区域5.txt', async page => {
     const error = await page.evaluate(() => { try { PacificFrontCapture.readSnapshot(sample); } catch (error) { return error.message; } });
@@ -316,6 +467,28 @@ async function withPlanner(run) {
 const savedInput = page => page.evaluate(() => JSON.parse(localStorage.getItem('pacific-front-planner-v1')));
 const pairedScript = async page => `globalThis.PacificFrontCaptureToken = ${JSON.stringify(await page.evaluate(async () => (await (await fetch('/capture/config')).json()).token))};\n${script}`;
 
+test('岸防炮样本导入目标组后保存区域加成，刷新可撤销且保留资源', async () => {
+  await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#capture-target').selectOption('0:1');
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键区域-敌军3存在未知单位类型.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.power), [215, 202, 167, 175]);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.powerIncrease), [0.16, 0.16, 0, 0]);
+    assert.deepEqual(imported.waves[0].groupConditions[1].captureSource.enemyPowerIncreases, [{ type: 'destroyer', rate: 0.16 }]);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4), before.waves[0].enemies.slice(0, 4));
+    assert.deepEqual(imported.waves[1], before.waves[1]);
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.deepEqual((await savedInput(page)).waves, imported.waves);
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
+
 test('页面文件导入、自动下一组、撤销以及资源修改保留', async () => {
   await withPlanner(async page => {
     const before = await savedInput(page);
@@ -359,6 +532,91 @@ test('区域敌方战力提升的页面导入与来源说明刷新后保留', as
     await page.reload();
     await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
     assert.match(await page.locator('.capture-source').textContent(), /敌方战力＋8%.*已计入/);
+  });
+});
+
+test('舰种提升导入、来源保存、刷新和撤销，不改其他组与资源', async () => {
+  await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#capture-target').selectOption('0:1');
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键区域-巡洋舰战力提升.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.power), [181, 180, 157, 151]);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.powerIncrease), [0.16, 0.16, 0.16, 0]);
+    assert.deepEqual(imported.waves[0].groupConditions[1].captureSource.enemyPowerIncreases, [{ type: 'cruiser', rate: 0.16 }]);
+    assert.equal(imported.waves[0].groupConditions[1].enemyPowerIncreases, undefined);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4), before.waves[0].enemies.slice(0, 4));
+    assert.deepEqual(imported.waves[1], before.waves[1]);
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    assert.match(await page.locator('.capture-source').textContent(), /巡洋舰战力＋16%.*已计入/);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.match(await page.locator('.capture-source').textContent(), /巡洋舰战力＋16%.*已计入/);
+    assert.deepEqual((await savedInput(page)).waves[0].enemies.slice(4).map(enemy => enemy.powerIncrease), [0.16, 0.16, 0.16, 0]);
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
+
+test('驱逐舰区域增益随输入刷新进入Worker，旧截图阵容不再误报全胜', async () => {
+  await withPlanner(async page => {
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键区域-驱逐舰战力提升.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4).map(e => e.powerIncrease), [0.16, 0.16, 0.16, 0.16]);
+    const fixed = await page.evaluate(async () => {
+      const { evaluateFormation } = await import('/solver.js');
+      const catalog = await (await fetch('/data/cards.json')).json(), items = await (await fetch('/data/items.json')).json();
+      const input = JSON.parse(localStorage.getItem('pacific-front-planner-v1'));
+      const ids = ['san_diego', 'johnston', 'benson', 'helldiver_essex'];
+      return evaluateFormation(ids.map(cardId => ({ cardId })), { ...input, enemies: input.waves[0].enemies.slice(0, 4),
+        conditions: input.waves[0].groupConditions[0], global: input.waves[0].groupConditions[0].global,
+        cards: ids.map((cardId, i) => ({ cardId, health: [3, 2, 2, 2][i] })) }, catalog, items);
+    });
+    assert.deepEqual(fixed.positions.map(p => p.enemyPower), [132, 164, 132, 132]);
+    assert.equal(fixed.wins, 3);
+    await page.evaluate(() => {
+      const input = JSON.parse(localStorage.getItem('pacific-front-planner-v1'));
+      input.waves = [{ enemies: input.waves[0].enemies.slice(0, 4).map((e, i) => ({ ...e, active: i < 2 })),
+        groupConditions: [input.waves[0].groupConditions[0]] }];
+      input.cards = ['san_diego', 'johnston'].map(cardId => ({ cardId, health: 3 }));
+      input.inventory = Object.fromEntries(Object.keys(input.inventory).map(id => [id, 0]));
+      localStorage.setItem('pacific-front-planner-v1', JSON.stringify(input));
+    });
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#capture-target').options.length === 1);
+    assert.deepEqual((await savedInput(page)).waves[0].enemies.map(e => e.powerIncrease), [0.16, 0.16, 0.16, 0.16]);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => document.querySelector('#result-panel').textContent.includes('行动配队方案'), null, { timeout: 20000 });
+    assert.match(await page.locator('#result-panel .result-badge').first().textContent(), /1\s*\/\s*2/);
+    assert.match(await page.locator('#result-panel').textContent(), /敌方原战力138.*区域战力＋16%/);
+  });
+});
+
+test('Worker重排同波用卡后仍按原组序显示，保存的输入不变', async () => {
+  await withPlanner(async page => {
+    await page.evaluate(() => {
+      const input = JSON.parse(localStorage.getItem('pacific-front-planner-v1'));
+      const group = (power, weaknesses) => Array.from({ length: 4 }, (_, i) => ({ active: i === 0, power, rawPower: String(power), weaknesses }));
+      input.waves = [{ enemies: [...group(80, []), ...group(110, ['debuff_concentric_target'])], groupConditions: [{}, {}] }];
+      input.cards = ['arrow', 'hughes'].map(cardId => ({ cardId, health: 3 }));
+      input.inventory = Object.fromEntries(Object.keys(input.inventory).map(id => [id, 0]));
+      localStorage.setItem('pacific-front-planner-v1', JSON.stringify(input));
+    });
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#capture-target').options.length === 2);
+    await page.locator('#planner').dispatchEvent('input');
+    const before = await savedInput(page);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => document.querySelector('#result-panel').textContent.includes('行动配队方案'));
+    assert.match(await page.locator('#result-panel .result-badge').first().textContent(), /2\s*\/\s*2/);
+    assert.match(await page.locator('#result-panel .section-note').textContent(), /第1波为第2组预留单位.*原组序/);
+    const groups = page.locator('#result-panel .group-result');
+    assert.match(await groups.nth(0).textContent(), /第1组.*USS休斯/s);
+    assert.match(await groups.nth(1).textContent(), /第2组.*HMS箭/s);
+    assert.deepEqual(await savedInput(page), before);
   });
 });
 
@@ -504,6 +762,36 @@ test('窗口隔离策略下仍能连接并抓取当前据点', async () => {
     await planner.locator('#capture-current').click();
     await planner.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
     assert.deepEqual((await savedInput(planner)).waves[0].groupConditions[0].global, { firepower: 0.24, survivability: 0, mobility: 0 });
+  });
+});
+
+test('游戏页舰种16%带入通过接口还原，来源刷新保留并可撤销', async () => {
+  await withPlanner(async (page, context) => {
+    const before = await savedInput(page);
+    const html = (await readFile(new URL('./html/关键区域-巡洋舰战力提升.txt', import.meta.url), 'utf8'))
+      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace('>区域</h3>', '>带入</h3>')
+      .replace(/<div id="pacific-front-capture-bridge"[\s\S]*$/, '');
+    await context.route('https://pacificfront.worldofwarships.asia/zh-sg/operations/typed-carry-test', route =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+    const game = await context.newPage();
+    await game.goto('https://pacificfront.worldofwarships.asia/zh-sg/operations/typed-carry-test');
+    await game.addScriptTag({ content: await pairedScript(page) });
+    const [planner] = await Promise.all([game.waitForEvent('popup'), game.locator('#pacific-front-capture-bridge button').click()]);
+    await planner.waitForFunction(() => document.querySelector('#capture-current') && !document.querySelector('#capture-current').disabled);
+    await planner.locator('#capture-current').click();
+    await planner.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(planner);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4).map(enemy => enemy.power), [156, 155, 135, 151]);
+    assert.deepEqual(imported.waves[0].groupConditions[0].captureSource.ignoredEnemyPowerIncreases, [{ type: 'cruiser', rate: 0.16 }]);
+    assert.deepEqual(imported.waves[0].enemies.slice(4), before.waves[0].enemies.slice(4));
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    assert.match(await planner.locator('.capture-source').textContent(), /带入.*巡洋舰战力＋16%.*已还原/);
+    await planner.reload();
+    await planner.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.match(await planner.locator('.capture-source').textContent(), /带入.*巡洋舰战力＋16%.*已还原/);
+    await planner.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(planner)).waves, before.waves);
   });
 });
 

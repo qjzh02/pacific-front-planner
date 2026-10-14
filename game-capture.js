@@ -9,6 +9,8 @@
   const STATS = ['firepower', 'survivability', 'mobility'];
   const FLAGS = ['buffsDisabled', 'debuffsDisabled', 'buffsReduced', 'debuffsReduced'];
   const UNIT_TYPES = ['aircraft', 'battleship', 'cruiser', 'destroyer'];
+  const ENEMY_TYPES = [...UNIT_TYPES, 'coastal_artillery'];
+  const TYPE_NAMES = { aircraft: '飞机', battleship: '战列舰', cruiser: '巡洋舰', destroyer: '驱逐舰' };
   const WEAKNESSES = {
     _antiAircraftFire_: 'debuff_vertical_lines', _detection_: 'debuff_concentric_target',
     _smokes_: 'debuff_ring_projectile', _largeCaliber_: 'debuff_single_shell',
@@ -25,11 +27,17 @@
   const text = node => node.textContent.replace(/\s+/g, ' ').trim();
   const blankCondition = () => ({ global: { firepower: 0, survivability: 0, mobility: 0 },
     buffsDisabled: false, debuffsDisabled: false, buffsReduced: false, debuffsReduced: false, itemsDisabled: false, allowedTypes: null });
+  const shipType = icon => {
+    const filename = (icon.getAttribute('src') ?? '').split('/').pop();
+    const match = filename.match(/^icon_([a-z]+)_standard-[\w-]+\.webp(?:[?#].*)?$/);
+    const cardType = filename.match(/^card_ship_(plane|coastal_artillery)-[\w-]+\.webp(?:[?#].*)?$/)?.[1];
+    return cardType === 'plane' ? 'aircraft' : cardType ?? match?.[1];
+  };
 
   function readRegion(root) {
     const container = one(root, '_conditions_', '战场条件');
     const condition = blankCondition();
-    const result = { condition, enemyPowerIncrease: 0, ignoredEnemyPowerIncrease: 0 };
+    const result = { condition, enemyPowerIncrease: 0, ignoredEnemyPowerIncrease: 0, ignoredEnemyPowerIncreases: [] };
     if (hasClass(container, '_noConditions_')) {
       check(text(container) === '无战斗条件', '无战斗条件标记与内容不一致，请等待页面更新后重试。');
       return result;
@@ -42,9 +50,42 @@
       check(/^\+\d+(?:\.\d+)?%$/.test(value) && Number.isFinite(Number(value.slice(1, -1))), '敌方战力提升比例无法识别，未导入。');
       return Number(value.slice(1, -1)) / 100;
     };
+    const typedSections = body => nodes(body, '_section_').filter(section =>
+      nodes(section, '_label_').some(label => /^敌方战力[：:]$/.test(text(label))));
+    const typedBoosts = body => {
+      const sections = typedSections(body), boosts = [], seen = new Set();
+      check(sections.length <= 1, '舰种战力提升栏目重复，未导入。');
+      for (const section of sections) {
+        const rows = nodes(section, '_statRow_');
+        check(rows.length > 0, '舰种战力提升内容缺失，未导入。');
+        for (const row of rows) {
+          const type = shipType(one(row, '_shipIcon_', '战力提升舰种图标'));
+          check(UNIT_TYPES.includes(type), '存在未知战力提升舰种图标，未导入。');
+          check(row.querySelectorAll('img').length === 1 && text(one(row, '_statLabel_', '战力提升舰种名称')) === TYPE_NAMES[type],
+            '战力提升舰种图标与名称不一致，未导入。');
+          check(!seen.has(type), '舰种战力提升重复，未导入。');
+          const rate = enemyRate(row);
+          check(rate > 0, '舰种战力提升比例必须大于0，未导入。');
+          check(text(row) === `${TYPE_NAMES[type]}${text(one(row, '_pctValue_', '舰种战力提升比例'))}`, '舰种战力提升包含未知内容，未导入。');
+          seen.add(type);
+          boosts.push({ row, type, rate });
+        }
+        const remaining = section.cloneNode(true);
+        nodes(remaining, '_statRow_').forEach(node => node.remove());
+        check(/^敌方战力[：:]$/.test(text(remaining)), '舰种战力提升包含未知内容，未导入。');
+      }
+      return boosts;
+    };
     for (const header of headers.filter(node => text(node) === '带入')) {
       const body = header.nextElementSibling;
       check(body && hasClass(body, '_bodyZone_'), '带入条件内容不完整，未导入。');
+      const typed = typedBoosts(body).filter(boost => !nodes(boost.row, '_struckText_').length);
+      for (const { type, rate } of typed) {
+        // shortcut: 用户两组舰种数据仅核对了16%；其他比例需提升前后实测。
+        check(rate === 0.16, '带入舰种战力提升比例尚未核对，未导入；请提供提升前后的战力。');
+        check(!result.ignoredEnemyPowerIncreases.some(boost => boost.type === type), '带入舰种战力提升重复，未导入。');
+        result.ignoredEnemyPowerIncreases.push({ type, rate });
+      }
       const active = enemyRows(body).filter(row => !nodes(row, '_struckText_').length && enemyRate(row) > 0);
       check(active.length <= 1 && !(active.length && result.ignoredEnemyPowerIncrease), '多项带入敌方提升的叠加规则尚未核对，未导入。');
       if (active.length) {
@@ -54,13 +95,16 @@
         result.ignoredEnemyPowerIncrease = rate;
       }
     }
+    check(!(result.ignoredEnemyPowerIncrease && result.ignoredEnemyPowerIncreases.length), '多项带入敌方提升的叠加规则尚未核对，未导入。');
     const regions = headers.filter(node => text(node) === '区域');
     check(regions.length <= 1, '存在多个区域条件栏目，未导入。');
     // 用户确认全域是下一关带入；与指定一起忽略，只录入当前区域。
     if (!regions.length) return result;
     const body = regions[0].nextElementSibling;
     check(body && hasClass(body, '_bodyZone_'), '区域条件内容缺失，请等待页面更新后重试。');
-    const rows = nodes(body, '_statRow_');
+    const typed = typedBoosts(body);
+    if (typed.length) result.enemyPowerIncreases = typed.map(({ type, rate }) => ({ type, rate }));
+    const rows = nodes(body, '_statRow_').filter(row => !typed.some(boost => boost.row === row));
     const statIds = { 火力: 'firepower', 存活性: 'survivability', 机动性: 'mobility' };
     const seen = new Set();
     for (const row of rows) {
@@ -81,7 +125,8 @@
     const boosts = enemyRows(body);
     check(boosts.length <= 1, '存在多项敌方战力提升，未导入。');
     if (boosts.length) result.enemyPowerIncrease = enemyRate(boosts[0]);
-    check(!(result.enemyPowerIncrease && result.ignoredEnemyPowerIncrease), '区域与带入敌方提升的叠加及取整规则尚未核对，未导入。');
+    check(!((result.enemyPowerIncrease || typed.length) && (result.ignoredEnemyPowerIncrease || result.ignoredEnemyPowerIncreases.length)),
+      '区域与带入敌方提升的叠加及取整规则尚未核对，未导入。');
     const typeSections = regionBody => nodes(regionBody, '_section_').filter(section =>
       nodes(section, '_label_').some(label => text(label) === '禁用的单位类型'));
     const restrictions = typeSections(body);
@@ -93,9 +138,7 @@
       check(icons.length > 0 && icons.length === iconRow.querySelectorAll('img').length &&
         icons.length === nodes(iconRow, '_iconTooltip_').length, '禁用单位类型图标缺失或不完整，未导入。');
       const banned = icons.map(icon => {
-        const filename = (icon.getAttribute('src') ?? '').split('/').pop();
-        const match = filename.match(/^icon_([a-z]+)_standard-[\w-]+\.webp(?:[?#].*)?$/);
-        const type = /^card_ship_plane-[\w-]+\.webp(?:[?#].*)?$/.test(filename) ? 'aircraft' : match?.[1];
+        const type = shipType(icon);
         check(UNIT_TYPES.includes(type), '存在未知禁用单位类型图标，未导入。');
         return type;
       });
@@ -104,11 +147,12 @@
       check(condition.allowedTypes.length > 0, '所有单位类型均被禁用，当前求解器无法导入此限制。');
     }
     const remaining = body.cloneNode(true);
+    typedSections(remaining).forEach(node => node.remove());
     nodes(remaining, '_statRow_').forEach(node => node.remove());
     enemyRows(remaining).forEach(node => node.remove());
     typeSections(remaining).forEach(node => node.remove());
     // shortcut: 仅核对过区域属性下降、敌方战力提升、禁用类型及禁用变项；其他效果收到样本后扩展。
-    check(rows.length + boosts.length + restrictions.length > 0 && !text(remaining), '区域包含尚不支持的条件，未导入；请保留页面样本。');
+    check(rows.length + boosts.length + typed.length + restrictions.length > 0 && !text(remaining), '区域包含尚不支持的条件，未导入；请保留页面样本。');
     return result;
   }
 
@@ -133,16 +177,30 @@
         return matches[0][1];
       });
       let power = Number(powerText);
-      if (region.ignoredEnemyPowerIncrease) {
+      let regionalRate = region.enemyPowerIncrease;
+      if (region.enemyPowerIncreases?.length) {
+        const type = shipType(one(card, '_cardTypeIcon_', `敌军${index + 1}单位类型图标`));
+        check(ENEMY_TYPES.includes(type), `敌军${index + 1}存在未知单位类型，无法识别区域战力增益。`);
+        regionalRate += region.enemyPowerIncreases.find(boost => boost.type === type)?.rate ?? 0;
+      }
+      check([0, 0.08, 0.16].includes(regionalRate), '区域敌方提升比例或叠加尚未核对，无法结算我方减益，未导入。');
+      let carriedRate = region.ignoredEnemyPowerIncrease;
+      if (region.ignoredEnemyPowerIncreases.length) {
+        const type = shipType(one(card, '_cardTypeIcon_', `敌军${index + 1}单位类型图标`));
+        check(ENEMY_TYPES.includes(type), `敌军${index + 1}存在未知单位类型，无法还原带入战力。`);
+        carriedRate = region.ignoredEnemyPowerIncreases.find(boost => boost.type === type)?.rate ?? 0;
+      }
+      if (carriedRate) {
         check(hasClass(powerNode, '_buffed_'), `敌军${index + 1}缺少战力加成标记，未导入。`);
         check(Number.isInteger(power), `敌军${index + 1}战力不是已核对的整数，无法还原。`);
-        const multiplier = 1 + region.ignoredEnemyPowerIncrease;
+        const multiplier = 1 + carriedRate;
         const original = Math.round(power / multiplier);
         // 增幅大于1时，显示值的四舍五入误差除以增幅后小于0.5，可唯一恢复整数。
         check(Math.round(original * multiplier) === power, `敌军${index + 1}显示战力与已核对的取整规则不一致，无法还原。`);
         power = original;
       }
-      return { active: true, power, weaknesses };
+      return { active: true, power, weaknesses,
+        ...(region.enemyPowerIncrease || region.enemyPowerIncreases?.length ? { powerIncrease: regionalRate } : {}) };
     });
     const stagePanel = one(root, '_stageInfo_', '阶段信息');
     const stage = text(one(stagePanel, '_title_', '阶段标题')).match(/^阶段\s*(\d+)$/);
@@ -150,6 +208,8 @@
     check(stage && keypoint, '阶段或据点编号无法识别，未导入。');
     const snapshot = { version: 1, source: { action: text(one(root, '_pageHeaderTitle_', '行动名称')),
       stage: Number(stage[1]), keypoint: Number(keypoint[1]), ...(region.enemyPowerIncrease > 0 ? { enemyPowerIncrease: region.enemyPowerIncrease } : {}),
+      ...(region.enemyPowerIncreases ? { enemyPowerIncreases: region.enemyPowerIncreases } : {}),
+      ...(region.ignoredEnemyPowerIncreases.length ? { ignoredEnemyPowerIncreases: region.ignoredEnemyPowerIncreases } : {}),
       ...(region.ignoredEnemyPowerIncrease > 0 ? { ignoredEnemyPowerIncrease: region.ignoredEnemyPowerIncrease } : {}) },
       enemies, condition: region.condition };
     validateSnapshot(snapshot);
@@ -164,7 +224,15 @@
       Number.isInteger(source.keypoint) && source.keypoint >= 1 && source.keypoint <= 30, '采集来源标识无效。');
     check(source.enemyPowerIncrease === undefined || (Number.isFinite(source.enemyPowerIncrease * 100) &&
       typeof source.enemyPowerIncrease === 'number' && source.enemyPowerIncrease >= 0), '敌方战力提升来源记录无效。');
-    check(source.ignoredEnemyPowerIncrease === undefined || (source.ignoredEnemyPowerIncrease === 0.08 && !source.enemyPowerIncrease),
+    const validTypedBoosts = boosts => Array.isArray(boosts) && boosts.length > 0 && boosts.length <= UNIT_TYPES.length &&
+      boosts.every(boost => UNIT_TYPES.includes(boost?.type) && typeof boost.rate === 'number' && Number.isFinite(boost.rate * 100) && boost.rate > 0) &&
+      new Set(boosts.map(boost => boost.type)).size === boosts.length;
+    check(source.enemyPowerIncreases === undefined || validTypedBoosts(source.enemyPowerIncreases),
+      '舰种战力提升来源记录无效。');
+    check(source.ignoredEnemyPowerIncreases === undefined || (validTypedBoosts(source.ignoredEnemyPowerIncreases) &&
+      source.ignoredEnemyPowerIncreases.every(boost => boost.rate === 0.16) && !source.enemyPowerIncrease && !source.enemyPowerIncreases && !source.ignoredEnemyPowerIncrease),
+      '带入舰种战力还原来源记录无效。');
+    check(source.ignoredEnemyPowerIncrease === undefined || (source.ignoredEnemyPowerIncrease === 0.08 && !source.enemyPowerIncrease && !source.enemyPowerIncreases),
       '带入敌方战力还原来源记录无效。');
     check(Array.isArray(snapshot.enemies) && snapshot.enemies.length === 4, '采集结果必须包含4个敌军。');
     const known = new Set(Object.values(WEAKNESSES));
@@ -173,6 +241,12 @@
         '采集敌军战力无效。');
       check(Array.isArray(enemy.weaknesses) && enemy.weaknesses.length <= 2 && new Set(enemy.weaknesses).size === enemy.weaknesses.length &&
         enemy.weaknesses.every(id => known.has(id)), '采集弱点无效或重复。');
+      check(enemy.powerIncrease === undefined || ([0, 0.08, 0.16].includes(enemy.powerIncrease) &&
+        (enemy.powerIncrease === 0 || (Number.isInteger(enemy.power) &&
+          Math.round(Math.round(enemy.power / (1 + enemy.powerIncrease)) * (1 + enemy.powerIncrease)) === enemy.power)) &&
+        !source.ignoredEnemyPowerIncrease && !source.ignoredEnemyPowerIncreases &&
+        (enemy.powerIncrease === (source.enemyPowerIncrease ?? 0) ||
+          source.enemyPowerIncreases?.some(boost => boost.rate === enemy.powerIncrease))), '采集敌军区域战力增益无效或无法还原原战力。');
     }
     const condition = snapshot.condition;
     check(condition && STATS.every(stat => Number.isFinite(condition.global?.[stat]) && condition.global[stat] >= 0 && condition.global[stat] <= 1) &&
@@ -191,6 +265,7 @@
     const result = structuredClone(input);
     const target = result.waves[waveIndex];
     target.enemies.splice(groupIndex * 4, 4, ...snapshot.enemies.map(enemy => ({ active: true, power: enemy.power,
+      ...(enemy.powerIncrease !== undefined ? { powerIncrease: enemy.powerIncrease } : {}),
       rawPower: String(enemy.power), weaknesses: [...enemy.weaknesses] })));
     target.groupConditions ??= Array.from({ length: target.enemies.length / 4 }, blankCondition);
     target.groupConditions[groupIndex] = { ...blankCondition(), global: { ...snapshot.condition.global },
@@ -199,6 +274,8 @@
       globalInputs: STATS.map(stat => ({ stat, active: snapshot.condition.global[stat] > 0, percent: snapshot.condition.global[stat] * 100 })),
       captureSource: { action: snapshot.source.action, stage: snapshot.source.stage, keypoint: snapshot.source.keypoint,
         ...(snapshot.source.enemyPowerIncrease > 0 ? { enemyPowerIncrease: snapshot.source.enemyPowerIncrease } : {}),
+        ...(snapshot.source.enemyPowerIncreases ? { enemyPowerIncreases: snapshot.source.enemyPowerIncreases.map(({ type, rate }) => ({ type, rate })) } : {}),
+        ...(snapshot.source.ignoredEnemyPowerIncreases ? { ignoredEnemyPowerIncreases: snapshot.source.ignoredEnemyPowerIncreases.map(({ type, rate }) => ({ type, rate })) } : {}),
         ...(snapshot.source.ignoredEnemyPowerIncrease > 0 ? { ignoredEnemyPowerIncrease: snapshot.source.ignoredEnemyPowerIncrease } : {}) } };
     return result;
   }

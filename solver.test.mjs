@@ -16,6 +16,67 @@ const request = (ids, stock = {}, extra = {}) => ({
 const unit = (cardId, standardId = null, specialId = null) => ({ cardId, standardId, specialId });
 const evaluate = (formation, input) => evaluateFormation(formation, input, catalog, items);
 
+test('regional enemy increase and one ordinary debuff reproduce the four destroyer screenshot', () => {
+  const ids = ['san_diego', 'johnston', 'benson', 'helldiver_essex'];
+  const input = request(ids, {}, { model: { rounding: 'conservative' } });
+  input.cards.forEach((card, i) => { card.health = [3, 2, 2, 2][i]; });
+  input.enemies = [160, 164, 159, 159].map((power, i) => ({ active: true, power, powerIncrease: 0.16,
+    weaknesses: [['debuff_ring_projectile', 'debuff_three_shells'], ['debuff_concentric_target', 'debuff_three_shells'],
+      ['debuff_ring_projectile', 'debuff_three_shells'], ['debuff_three_shells', 'debuff_plane']][i] }));
+  const result = evaluate(ids.map(id => unit(id)), input);
+  assert.deepEqual(result.positions.map(p => p.enemyPower), [132, 164, 132, 132]);
+  assert.deepEqual(result.positions.map(p => p.ownPower), [130, 170, 137, 152]);
+  assert.deepEqual(result.positions.map(p => p.win), [false, true, true, true]);
+  assert.equal(result.wins, 3);
+  assert.deepEqual(result.positions.map(p => p.enemyBasePower), [138, 141, 137, 137]);
+});
+
+test('enemy regional metadata affects search and action, rejects stale captures and invalid reconstruction', () => {
+  const input = request(['johnston', 'san_diego'], {}, { model: { rounding: 'conservative' } });
+  input.enemies = input.enemies.map((e, i) => ({ ...e, active: i === 0, power: 160, powerIncrease: 0.16, weaknesses: ['debuff_three_shells'] }));
+  input.conditions = { allowedTypes: ['cruiser'] }; // only san_diego can deploy, johnston cannot supply a debuff
+  for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+    assert.equal(solve(input, catalog, items, options).wins, 0);
+  }
+  const weakOnly = request(['john_d_ford'], {}, { model: { rounding: 'conservative' } });
+  weakOnly.enemies = weakOnly.enemies.map((e, i) => ({ ...e, active: i === 0, power: 116, powerIncrease: 0.16, weaknesses: ['debuff_ring_projectile'] }));
+  // Original100 reduced by20 then increased by16 is96; old boosted116×0.8 wrongly lets power94 win.
+  const modified = structuredClone(catalog);
+  modified.cards.find(c => c.id === 'john_d_ford').firepower = 34;
+  modified.cards.find(c => c.id === 'john_d_ford').power_min = 94;
+  modified.cards.find(c => c.id === 'john_d_ford').effects[1].direction = 'front';
+  for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+    const result = solve(weakOnly, modified, items, options);
+    assert.equal(result.wins, 0);
+    assert.equal(result.positions[0].enemyPower, 96);
+  }
+  weakOnly.waves = [{ enemies: weakOnly.enemies }];
+  assert.equal(solveAction(weakOnly, modified, items).wins, 0);
+  for (const powerIncrease of ['0.16', -0.16, 0.12]) {
+    assert.throws(() => evaluate([unit('john_d_ford'), null, null, null],
+      { ...weakOnly, enemies: weakOnly.enemies.map(e => ({ ...e, powerIncrease })) }), /敌军.*增益/);
+  }
+  assert.throws(() => evaluate([unit('john_d_ford'), null, null, null],
+    { ...weakOnly, enemies: weakOnly.enemies.map(e => ({ ...e, power: 4 })) }), /原战力/);
+  const stale = { ...input, enemies: input.enemies.map(({ powerIncrease, ...e }) => e),
+    conditions: { captureSource: { enemyPowerIncreases: [{ type: 'destroyer', rate: 0.16 }] } } };
+  assert.throws(() => solve(stale, catalog, items), /重新采集/);
+});
+
+test('boosted enemies retain unmatched display values and add reductions with existing rounding', () => {
+  const input = request(['north_carolina', 'corsair_essex'], { special_debuff_amplifier: 1 }, { model: { rounding: 'conservative' } });
+  input.enemies = input.enemies.map(e => ({ ...e, power: 159, powerIncrease: 0.16, weaknesses: ['debuff_vertical_lines'] }));
+  const result = evaluate([unit('north_carolina'), null, unit('corsair_essex'), null], input);
+  assert.equal(result.positions[0].enemyPower, 159);
+  assert.equal(result.positions[1].enemyPower, 105); // ceil(137 × (1 + 0.16 - 0.2 - 0.2)); rounding remains unconfirmed
+  assert.equal(result.positions[1].enemyPowerRoundingAssumed, true);
+  const amplified = evaluate([unit('north_carolina', null, 'special_debuff_amplifier'), null, null, null], input);
+  assert.equal(amplified.positions[1].enemyPower, 105);
+  assert.equal(amplified.positions[1].enemyPowerRoundingAssumed, true);
+  input.conditions = { debuffsDisabled: true };
+  assert.deepEqual(evaluate([unit('north_carolina'), null, unit('corsair_essex'), null], input).positions.map(p => p.enemyPower), [159, 159, 159, 159]);
+});
+
 test('disabled items forbid both equipment slots including ignore conditions; search uses no items', () => {
   const input = request(['missouri'], { standard_firepower: 4, special_disable_effects_power: 4, special_ignore_conditions: 4 },
     { conditions: { itemsDisabled: true } });
@@ -74,10 +135,10 @@ test('50 percent debuff reduction halves each matched, amplified and forced sour
   const input = request(['north_carolina','corsair_essex'], {special_debuff_amplifier:1,special_force_debuff:1,special_ignore_conditions:1});
   input.conditions = {debuffsReduced:true};
   input.enemies[1].weaknesses=['debuff_vertical_lines'];
-  assert.equal(evaluate([unit('north_carolina'),null,unit('corsair_essex'),null],input).positions[1].enemyPower,162);
-  assert.ok(Math.abs(evaluate([unit('north_carolina',null,'special_debuff_amplifier'),null,unit('corsair_essex'),null],input).positions[1].enemyPower-144)<1e-8);
+  assert.equal(evaluate([unit('north_carolina'),null,unit('corsair_essex'),null],input).positions[1].enemyPower,160);
+  assert.ok(Math.abs(evaluate([unit('north_carolina',null,'special_debuff_amplifier'),null,unit('corsair_essex'),null],input).positions[1].enemyPower-140)<1e-8);
   const ignored=evaluate([unit('north_carolina',null,'special_ignore_conditions'),null,unit('corsair_essex'),null],input);
-  assert.equal(ignored.positions[1].enemyPower,144);
+  assert.equal(ignored.positions[1].enemyPower,140);
   input.enemies[1].weaknesses=[];
   assert.equal(evaluate([unit('north_carolina'),null,unit('corsair_essex',null,'special_force_debuff'),null],input).positions[1].enemyPower,180);
   input.conditions.debuffsDisabled=true;
@@ -270,6 +331,43 @@ test('all catalog cards can be selected for evaluation and action planning', () 
   assert.equal(result.remainingCards.length, catalog.cards.length);
 });
 
+test('action replans a failed later group before spending its specialist in an earlier group', () => {
+  const input = request(['arrow', 'hughes']);
+  const group = (power, weaknesses) => input.enemies.map((e, i) => ({ ...e, power, weaknesses, active: i === 0 }));
+  input.waves = [{ enemies: [...group(80, []), ...group(110, ['debuff_concentric_target'])],
+    groupConditions: [{ itemsDisabled: true }, { global: { mobility: 0.01 } }] }];
+  const original = structuredClone(input);
+  for (const options of [{}, { exactLimit: 0, beamWidth: 2400 }]) {
+    const progress = [];
+    const result = solveAction(input, catalog, items, { ...options, onProgress: p => progress.push(p) });
+    assert.equal(result.wins, 2);
+    assert.deepEqual(result.waves[0].groups.map(g => g.group), [1, 2]);
+    assert.equal(result.waves[0].groups[0].positions[0].cardId, 'hughes');
+    assert.equal(result.waves[0].groups[1].positions[0].cardId, 'arrow');
+    assert.equal(result.waves[0].remainingCards.find(c => c.cardId === 'arrow').health, 2);
+    assert.equal(result.waves[0].remainingCards.find(c => c.cardId === 'hughes').health, 2);
+    assert.deepEqual(result.groupRepairs, [{ wave: 1, group: 2 }]);
+    assert.equal(result.waves[0].groups[0].conditions.itemsDisabled, true);
+    assert.equal(result.waves[0].groups[1].global.mobility, 0.01);
+    assert.ok(progress.some(p => p.phase === 'repair'));
+    assert.deepEqual(input, original);
+  }
+});
+
+test('unsuccessful group replanning keeps the accepted plan, inventory and unused health', () => {
+  const input = request(['arrow', 'hughes'], { standard_mobility: 1 });
+  const group = input.enemies.map((e, i) => ({ ...e, active: i === 0, power: 999999 }));
+  input.waves = [{ enemies: [...group, ...group] }];
+  const original = structuredClone(input);
+  const result = solveAction(input, catalog, items);
+  assert.equal(result.wins, 0);
+  assert.deepEqual(result.groupRepairs, []);
+  assert.equal(result.groupRepairRetries, 1);
+  assert.equal(result.remainingInventory.standard_mobility, 1);
+  assert.deepEqual(result.remainingCards, input.cards);
+  assert.deepEqual(input, original);
+});
+
 test('exact and bounded action search save stronger cards for later groups', () => {
   const strong = ['missouri', 'north_carolina', 'helldiver_essex', 'corsair_essex'];
   const weak = ['wildcat_saratoga', 'marblehead', 'arrow', 'john_d_ford'];
@@ -360,13 +458,55 @@ test('buff amplification makes the outgoing 30 percent bonus become 60 percent',
   assert.equal(result.positions[0].ownPower, 228);
 });
 
-test('two debuffs multiply and amplification changes one factor to 0.6', () => {
-  const input = request(['corsair_essex', 'hellcat_enterprise'], { special_debuff_amplifier: 1 });
+test('two debuffs add their rates, including amplified and reduced effects', () => {
+  const input = request(['corsair_essex', 'hellcat_enterprise'], { special_debuff_amplifier: 2 });
   input.enemies[1].weaknesses = ['debuff_plane'];
   const normal = evaluate([unit('corsair_essex'), null, unit('hellcat_enterprise'), null], input);
   const amplified = evaluate([unit('corsair_essex', null, 'special_debuff_amplifier'), null, unit('hellcat_enterprise'), null], input);
-  assert.ok(Math.abs(normal.positions[1].enemyPower - 128) < 1e-9);
-  assert.ok(Math.abs(amplified.positions[1].enemyPower - 96) < 1e-9);
+  assert.ok(Math.abs(normal.positions[1].enemyPower - 120) < 1e-9);
+  assert.ok(Math.abs(amplified.positions[1].enemyPower - 80) < 1e-9);
+  const twiceAmplified = [unit('corsair_essex', null, 'special_debuff_amplifier'), null,
+    unit('hellcat_enterprise', null, 'special_debuff_amplifier'), null];
+  assert.ok(Math.abs(evaluate(twiceAmplified, input).positions[1].enemyPower - 40) < 1e-9);
+  input.conditions = { debuffsReduced: true };
+  assert.ok(Math.abs(evaluate(twiceAmplified, input).positions[1].enemyPower - 120) < 1e-9);
+});
+
+test('three sources and two effects from one card add on original enemy power', () => {
+  const input = request(['north_carolina', 'san_diego', 'corsair_essex']);
+  input.enemies[1] = { active: true, power: 232, powerIncrease: 0.16, weaknesses: ['debuff_vertical_lines'] };
+  const result = evaluate([unit('north_carolina'), unit('san_diego'), unit('corsair_essex'), null], input);
+  assert.ok(Math.abs(result.positions[1].enemyRaw - 112) < 1e-9); // 200 × (1 + 0.16 - 3 × 0.2)
+  assert.equal(result.positions[1].effects.filter(e => e.kind === 'debuff').length, 3);
+  const modified = structuredClone(catalog);
+  modified.cards.find(c => c.id === 'missouri').effects[1].direction = 'front';
+  const sameSource = request(['missouri']);
+  sameSource.enemies[0].weaknesses = ['debuff_concentric_target', 'debuff_single_shell'];
+  const combined = evaluateFormation([unit('missouri'), null, null, null], sameSource, modified, items);
+  assert.ok(Math.abs(combined.positions[0].enemyPower - 120) < 1e-9);
+});
+
+test('exact and bounded searches and multi-wave action use additive enemy debuffs', () => {
+  for (const increase of [0, 0.16]) {
+    const bases = increase ? [240, 210] : [300, 270];
+    const input = request(['corsair_essex', 'missouri', 'hellcat_enterprise']);
+    const enemies = base => input.enemies.map((e, i) => ({ ...e, active: i === 1,
+      power: Math.round(base * (1 + increase)), powerIncrease: increase, weaknesses: ['debuff_plane'] }));
+    input.enemies = enemies(bases[0]);
+    input.waves = bases.map(base => ({ enemies: enemies(base) }));
+    const original = structuredClone(input);
+    for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+      const result = solve(input, catalog, items, { ...options, allowEmpty: true });
+      assert.equal(result.wins, 1);
+      assert.equal(result.positions[1].cardId, 'missouri');
+      assert.ok(Math.abs(result.positions[1].enemyRaw - bases[0] * (1 + increase - 0.4)) < 1e-9);
+      const action = solveAction(input, catalog, items, options);
+      assert.equal(action.wins, 2);
+      assert.deepEqual(action.remainingCards.map(c => c.health), [1, 1, 1]);
+      assert.deepEqual(action.remainingInventory, input.inventory);
+    }
+    assert.deepEqual(input, original);
+  }
 });
 
 test('forced debuffs keep their directions and do not wrap around the board', () => {

@@ -1,0 +1,529 @@
+{
+  "kind": "synthetic",
+  "catalog": {
+    "cards": [
+      {
+        "id": "test_card_01",
+        "name": "人工单位1",
+        "unit_type": "aircraft",
+        "firepower": 110,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 100,
+        "effects": []
+      },
+      {
+        "id": "test_card_02",
+        "name": "人工单位2",
+        "unit_type": "aircraft",
+        "firepower": 110,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 100,
+        "effects": []
+      },
+      {
+        "id": "test_card_03",
+        "name": "人工单位3",
+        "unit_type": "aircraft",
+        "firepower": 110,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 100,
+        "effects": []
+      },
+      {
+        "id": "test_card_04",
+        "name": "人工单位4",
+        "unit_type": "aircraft",
+        "firepower": 110,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 100,
+        "effects": []
+      },
+      {
+        "id": "test_card_05",
+        "name": "人工单位5",
+        "unit_type": "aircraft",
+        "firepower": 110,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 100,
+        "effects": []
+      },
+      {
+        "id": "test_card_06",
+        "name": "人工单位6",
+        "unit_type": "aircraft",
+        "firepower": 110,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 100,
+        "effects": []
+      },
+      {
+        "id": "test_card_07",
+        "name": "人工单位7",
+        "unit_type": "aircraft",
+        "firepower": 110,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 100,
+        "effects": []
+      },
+      {
+        "id": "test_card_08",
+        "name": "人工单位8",
+        "unit_type": "aircraft",
+        "firepower": 110,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 100,
+        "effects": []
+      },
+      {
+        "id": "test_card_09",
+        "name": "人工单位9",
+        "unit_type": "battleship",
+        "firepower": 160,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 150,
+        "effects": []
+      },
+      {
+        "id": "test_card_10",
+        "name": "人工单位10",
+        "unit_type": "battleship",
+        "firepower": 160,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 150,
+        "effects": []
+      },
+      {
+        "id": "test_card_11",
+        "name": "人工单位11",
+        "unit_type": "battleship",
+        "firepower": 160,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 150,
+        "effects": []
+      },
+      {
+        "id": "test_card_12",
+        "name": "人工单位12",
+        "unit_type": "battleship",
+        "firepower": 160,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 150,
+        "effects": []
+      },
+      {
+        "id": "test_card_13",
+        "name": "人工单位13",
+        "unit_type": "battleship",
+        "firepower": 160,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 150,
+        "effects": []
+      },
+      {
+        "id": "test_card_14",
+        "name": "人工单位14",
+        "unit_type": "battleship",
+        "firepower": 160,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 150,
+        "effects": []
+      },
+      {
+        "id": "test_card_15",
+        "name": "人工单位15",
+        "unit_type": "battleship",
+        "firepower": 160,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 150,
+        "effects": []
+      },
+      {
+        "id": "test_card_16",
+        "name": "人工单位16",
+        "unit_type": "battleship",
+        "firepower": 160,
+        "survivability": 0,
+        "mobility": 0,
+        "power_min": 150,
+        "effects": []
+      }
+    ],
+    "effect_types": []
+  },
+  "input": {
+    "cards": [
+      {
+        "cardId": "test_card_01",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_02",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_03",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_04",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_05",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_06",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_07",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_08",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_09",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_10",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_11",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_12",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_13",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_14",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_15",
+        "health": 3
+      },
+      {
+        "cardId": "test_card_16",
+        "health": 3
+      }
+    ],
+    "inventory": {
+      "standard_firepower": 4,
+      "standard_survivability": 0,
+      "standard_mobility": 0,
+      "standard_buff_amplifier": 0,
+      "standard_unused_5": 0,
+      "standard_unused_6": 0,
+      "special_disable_effects_power": 0,
+      "special_debuff_amplifier": 0,
+      "special_force_debuff": 0,
+      "special_restore_health": 0,
+      "special_ignore_conditions": 0
+    },
+    "waves": [
+      {
+        "enemies": [
+          {
+            "active": true,
+            "power": 99,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 99,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 99,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 99,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          }
+        ],
+        "groupConditions": [
+          {},
+          {},
+          {},
+          {
+            "allowedTypes": [
+              "aircraft"
+            ]
+          }
+        ]
+      },
+      {
+        "enemies": [
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 100,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 100,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 100,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 100,
+            "weaknesses": []
+          }
+        ],
+        "groupConditions": [
+          {},
+          {},
+          {},
+          {
+            "allowedTypes": [
+              "aircraft"
+            ]
+          }
+        ]
+      },
+      {
+        "enemies": [
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          },
+          {
+            "active": true,
+            "power": 0,
+            "weaknesses": []
+          }
+        ],
+        "groupConditions": [
+          {},
+          {},
+          {},
+          {}
+        ]
+      }
+    ]
+  }
+}

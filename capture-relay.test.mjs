@@ -80,6 +80,42 @@ test('拒绝无效结果及超大请求，游戏页接管后拒绝旧连接', as
   });
 });
 
+test('接口校验舰种提升来源，保留有效记录并拒绝无效或与带入还原叠加', async () => {
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'client-boost' } });
+    await call('request', { body: { requestId: 'request-boost' } });
+    const boost = { type: 'cruiser', rate: 0.16 };
+    for (const enemyPowerIncreases of [[], [null], [{ ...boost, type: 'unknown' }], [boost, boost],
+      [{ ...boost, rate: -0.16 }], [{ ...boost, rate: '0.16' }]]) {
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-boost',
+        snapshot: { ...snapshot, source: { ...snapshot.source, enemyPowerIncreases } } } })).status, 400);
+    }
+    const source = { action: '测试行动', stage: 1, keypoint: 1, enemyPowerIncreases: [boost] };
+    for (const powerIncrease of ['0.16', -0.16, 0.12]) {
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-boost',
+        snapshot: { ...snapshot, source, enemies: snapshot.enemies.map(enemy => ({ ...enemy, powerIncrease })) } } })).status, 400);
+    }
+    assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-boost',
+      snapshot: { ...snapshot, source: { ...source, ignoredEnemyPowerIncrease: 0.08 } } } })).status, 400);
+    const typed = { ...snapshot, source };
+    assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-boost', snapshot: typed } })).status, 200);
+    assert.deepEqual((await (await call('status')).json()).result.snapshot, typed);
+    await call('request', { body: { requestId: 'request-restored-types' } });
+    for (const source of [
+      { ...typed.source, ignoredEnemyPowerIncreases: [boost] },
+      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [{ ...boost, rate: 0.12 }] },
+      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost, boost] },
+      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost], ignoredEnemyPowerIncrease: 0.08 },
+    ]) {
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-restored-types',
+        snapshot: { ...snapshot, source } } })).status, 400);
+    }
+    const restored = { ...snapshot, source: { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost] } };
+    assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-restored-types', snapshot: restored } })).status, 200);
+    assert.deepEqual((await (await call('status')).json()).result.snapshot, restored);
+  });
+});
+
 test('接口接受有效区域舰种限制，拒绝空值、重复或未知类型', async () => {
   await withRelay(async call => {
     await call('game', { game: true, body: { type: 'connect', clientId: 'client-types' } });
