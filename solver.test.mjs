@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { evaluateFormation, solve, solveAction } from './solver.js';
+import * as solver from './solver.js';
 
 const catalog = JSON.parse(readFileSync(new URL('./data/cards.json', import.meta.url)));
 const items = JSON.parse(readFileSync(new URL('./data/items.json', import.meta.url)));
@@ -15,6 +16,67 @@ const request = (ids, stock = {}, extra = {}) => ({
 });
 const unit = (cardId, standardId = null, specialId = null) => ({ cardId, standardId, specialId });
 const evaluate = (formation, input) => evaluateFormation(formation, input, catalog, items);
+
+test('action branch budget preserves a valid partial plan and marks unsearched groups', () => {
+  const input = request(catalog.cards.map(card => card.id));
+  input.waves = [{ enemies: [...input.enemies, ...input.enemies] }];
+  const original = structuredClone(input);
+  for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+    const result = solveAction(input, catalog, items, { ...options, maxBranches: 1024 });
+    assert.equal(result.searchLimited, true);
+    assert.ok(result.explored <= 2048);
+    assert.equal(result.waves[0].groups[0].searchIncomplete, true);
+    assert.equal(result.waves[0].groups[1].searchMode, 'unsearched');
+    const deployed = new Set();
+    for (const group of result.waves[0].groups) {
+      const checked = evaluate(group.formation, input);
+      assert.equal(group.wins, checked.wins);
+      for (const position of group.positions) if (position.cardId) {
+        assert.ok(!deployed.has(position.cardId)); deployed.add(position.cardId);
+        assert.equal(position.healthAfter, position.health - 1);
+      }
+    }
+    assert.deepEqual(input, original);
+  }
+  const hopeless = { ...input, waves: [{ enemies: input.waves[0].enemies.map(enemy => ({ ...enemy, power: 1000000 })) }] };
+  const stopped = solveAction(hopeless, catalog, items, { exactLimit: 0, beamWidth: 300, maxBranches: 2048 });
+  assert.deepEqual(stopped.remainingCards, hopeless.cards);
+  assert.equal(stopped.itemCount, 0);
+});
+
+test('cooperative action matches unlimited synchronous search and can stop by execution time', async () => {
+  assert.equal(typeof solver.solveActionAsync, 'function');
+  const input = request(catalog.cards.slice(0, 8).map(card => card.id), { standard_firepower: 2 });
+  input.waves = [{ enemies: input.enemies }];
+  let yields = 0;
+  const options = { exactLimit: 0, beamWidth: 60 };
+  const synchronous = solveAction(input, catalog, items, options);
+  const asynchronous = await solver.solveActionAsync(input, catalog, items, { ...options, timeSliceMs: 0,
+    schedule: async () => { yields++; } });
+  const semantic = result => { const { searchElapsedMs, ...rest } = result; return rest; };
+  assert.deepEqual(semantic(asynchronous), semantic(synchronous));
+  assert.ok(yields > 0);
+  const limited = await solver.solveActionAsync(input, catalog, items, { ...options, maxTimeMs: 0.001 });
+  assert.equal(limited.searchLimited, true);
+  assert.ok(limited.searchElapsedMs >= 0.001);
+  for (const maxTimeMs of [-1, NaN, '30']) assert.throws(() => solveAction(input, catalog, items, { maxTimeMs }), /预算/);
+});
+
+test('a budget ending during repair preserves an already completed better plan', () => {
+  const input = request(['arrow', 'hughes']);
+  const group = (power, weaknesses) => input.enemies.map((enemy, i) => ({ ...enemy, power, weaknesses, active: i === 0 }));
+  input.waves = [{ enemies: [...group(80, []), ...group(110, ['debuff_concentric_target'])] }];
+  let initialBranches = 0;
+  solveAction(input, catalog, items, { onProgress: progress => {
+    if (progress.phase === 'initial' && progress.completedGroups === 2) initialBranches = progress.explored;
+  } });
+  const result = solveAction(input, catalog, items, { maxBranches: initialBranches + 1 });
+  assert.equal(result.searchLimited, true);
+  assert.ok(result.wins >= 1);
+  const deployed = result.waves[0].groups.flatMap(group => group.positions.filter(position => position.cardId).map(position => position.cardId));
+  assert.equal(new Set(deployed).size, deployed.length);
+  assert.ok(Object.values(result.remainingInventory).every(quantity => quantity >= 0));
+});
 
 test('regional enemy increase and one ordinary debuff reproduce the four destroyer screenshot', () => {
   const ids = ['san_diego', 'johnston', 'benson', 'helldiver_essex'];
@@ -61,6 +123,24 @@ test('enemy regional metadata affects search and action, rejects stale captures 
   const stale = { ...input, enemies: input.enemies.map(({ powerIncrease, ...e }) => e),
     conditions: { captureSource: { enemyPowerIncreases: [{ type: 'destroyer', rate: 0.16 }] } } };
   assert.throws(() => solve(stale, catalog, items), /重新采集/);
+});
+
+test('mixed capture keeps submarine regional16 on original139 for evaluation, search and action', () => {
+  const input = request(['missouri'], {}, { model: { rounding: 'conservative' } });
+  input.conditions = { captureSource: { ignoredEnemyPowerIncrease: 0.08,
+    ignoredEnemyPowerIncreases: [{ type: 'destroyer', rate: 0.16 }], enemyPowerIncreases: [{ type: 'submarine', rate: 0.16 }] } };
+  input.enemies = input.enemies.map((enemy, i) => ({ ...enemy, active: i === 0, power: 161, powerIncrease: i === 0 ? 0.16 : 0,
+    weaknesses: ['debuff_concentric_target'] }));
+  const evaluated = evaluate([unit('missouri'), null, null, null], input);
+  assert.equal(evaluated.positions[0].enemyBasePower, 139);
+  assert.equal(evaluated.positions[0].enemyPower, 133); // round(139 × (1 + 0.16 - 0.2))
+  for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+    const result = solve(input, catalog, items, options);
+    assert.equal(result.positions[0].enemyPower, 133);
+    const action = solveAction({ ...input, waves: [{ enemies: input.enemies, groupConditions: [input.conditions] }] }, catalog, items, options);
+    assert.equal(action.waves[0].groups[0].positions[0].enemyBasePower, 139);
+    assert.equal(action.waves[0].groups[0].positions[0].enemyPower, 133);
+  }
 });
 
 test('boosted enemies retain unmatched display values and add reductions with existing rounding', () => {
@@ -366,6 +446,53 @@ test('unsuccessful group replanning keeps the accepted plan, inventory and unuse
   assert.equal(result.remainingInventory.standard_mobility, 1);
   assert.deepEqual(result.remainingCards, input.cards);
   assert.deepEqual(input, original);
+});
+
+test('action reuses identical searches across groups and unsuccessful repairs only within this action', () => {
+  const input = request(['arrow', 'hughes', 'missouri', 'laffey', 'johnston']);
+  input.enemies.forEach(enemy => { enemy.power = 1000000; });
+  input.waves = Array.from({ length: 2 }, () => ({ enemies: [...input.enemies, ...input.enemies] }));
+  const original = structuredClone(input);
+  for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+    const single = solve(input, catalog, items, { ...options, allowEmpty: true });
+    const result = solveAction(input, catalog, items, options);
+    assert.equal(result.wins, 0);
+    assert.equal(result.groupRepairRetries, 2);
+    assert.equal(result.explored, single.explored);
+    assert.ok(result.searchCacheHits >= 3);
+    assert.equal(result.waves[0].groups[1].searchReused, true);
+    assert.equal(result.waves[0].groups[1].explored, 0);
+    assert.notEqual(result.waves[0].groups[0].positions, result.waves[0].groups[1].positions);
+    assert.deepEqual(result.remainingCards, input.cards);
+    assert.deepEqual(input, original);
+    // A new call must do its own first search, including when search settings change.
+    assert.equal(solveAction(input, catalog, items, options).explored, single.explored);
+  }
+});
+
+test('action search reuse respects health, stock, enemies, conditions and captured source metadata', () => {
+  const input = request(['missouri'], { standard_firepower: 1 });
+  const enemies = input.enemies.map((enemy, i) => ({ ...enemy, power: 190, active: i === 0 }));
+  input.waves = Array.from({ length: 3 }, () => ({ enemies }));
+  const result = solveAction(input, catalog, items);
+  assert.deepEqual(result.waves.map(wave => wave.wins), [1, 0, 0]);
+  assert.equal(result.remainingCards[0].health, 2);
+  assert.equal(result.remainingInventory.standard_firepower, 0);
+  assert.ok(result.searchCacheHits > 0);
+  assert.equal(result.waves[2].groups[0].searchReused, true);
+  const changed = request(['missouri']);
+  changed.waves = [
+    { enemies: enemies.map(enemy => ({ ...enemy, power: 1000000 })), groupConditions: [{ captureSource: { action: 'A' } }] },
+    { enemies: enemies.map(enemy => ({ ...enemy, power: 1000000 })), groupConditions: [{ captureSource: { action: 'B' } }] },
+    { enemies: enemies.map(enemy => ({ ...enemy, power: 180 })), groupConditions: [{ global: { firepower: 1 } }] },
+    { enemies: enemies.map(enemy => ({ ...enemy, power: 180 })), groupConditions: [{}] },
+    { enemies: enemies.map(enemy => ({ ...enemy, power: 200 })), groupConditions: [{}] },
+    { enemies: enemies.map(enemy => ({ ...enemy, power: 200, weaknesses: ['debuff_concentric_target'] })), groupConditions: [{}] },
+  ];
+  const distinct = solveAction(changed, catalog, items);
+  assert.deepEqual(distinct.waves.map(wave => wave.wins), [0, 0, 0, 1, 0, 1]);
+  assert.deepEqual(distinct.waves.slice(0, 2).map(wave => wave.groups[0].conditions.captureSource.action), ['A', 'B']);
+  assert.equal(distinct.searchCacheHits, 0);
 });
 
 test('exact and bounded action search save stronger cards for later groups', () => {

@@ -57,9 +57,12 @@
               <label class="setting-check"><input type="checkbox" id="allow-equal">战力相等也计入胜利</label>
               <label class="setting-check"><input type="checkbox" id="revive">允许用回血道具救活零生命单位</label>
               <label>有限搜索范围<select id="beam-width"><option value="300">快速</option><option value="900" selected>标准</option><option value="2400">更广</option></select></label>
+              <label>计算预算<select id="compute-budget"><option value="0" selected>不限计算时间</option><option value="30">最多计算30秒</option><option value="60">最多计算60秒</option></select></label>
+              <label class="setting-check"><input type="checkbox" id="pause-background" checked>切到后台时暂停，返回继续</label>
+              <p class="setting-note">预算只累计实际执行时间。达到预算后保留已找到的方案，并标出未完成搜索的组；暂停或取消均不改变输入与库存。</p>
               <p class="setting-note">后续波次有失败时，会尝试在零生命之前提前回血；只有增加整场胜场才保留。取整、平局、全局减益的叠加及零生命恢复尚待游戏实测校准。结果按当前设置计算。</p>
             </details>
-            <div class="compute-box"><p id="ready-summary">请选择你的可用卡牌</p><button type="submit" id="calculate" class="primary">开始计算 <span aria-hidden="true">→</span></button><button type="button" id="cancel" hidden>取消计算</button><p class="save-note">输入保存在此浏览器，下次继续使用。</p></div>
+            <div class="compute-box"><p id="ready-summary">请选择你的可用卡牌</p><button type="submit" id="calculate" class="primary">开始计算 <span aria-hidden="true">→</span></button><button type="button" id="pause" hidden>暂停计算</button><button type="button" id="cancel" hidden>取消计算</button><p class="save-note">输入保存在此浏览器，下次继续使用。</p></div>
           </section>
           <div class="priority-note"><span>逐组计算优先级</span><ol><li>按当前模型击败更多敌人</li><li>先用灰色，优先保留绿色道具</li><li>再少用灰色道具和上阵单位</li><li>优先使用能打过的弱卡，保留强卡</li><li>以上相同时提高对位战力余量</li></ol><p>同等胜场时先少用绿色、再少用灰色，允许用两件灰色代替一件绿色。弱卡按满血最低战力衡量，胜负仍按生命、装备和方向效果结算。每波同一卡牌只上阵一次；上阵扣1格生命。</p></div>
         </aside>

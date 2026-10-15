@@ -42,6 +42,11 @@ html/*
 !html/关键区域-巡洋舰战力提升.txt
 !html/关键区域-驱逐舰战力提升.txt
 !html/关键区域-敌军3存在未知单位类型.txt
+!html/关键区域-增益效果-100%.txt
+!html/关键区域-减益--50%.txt
+!html/关键区域-多项带入敌方提升叠加.txt
+!html/关键区域-既有带入又有区域提升叠加.txt
+!html/关键区域-存在未知战力提升图标-岸防炮.txt
 test-fixtures/*
 !test-fixtures/action-resource-regression.json
 tmp/

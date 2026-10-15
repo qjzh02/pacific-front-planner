@@ -2,11 +2,13 @@ const $ = selector => document.querySelector(selector);
 const escape = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const STAT_NAMES = { firepower: '火力', survivability: '存活性', mobility: '机动性' };
 const TYPE_NAMES = { aircraft: '飞机', battleship: '战列舰', cruiser: '巡洋舰', destroyer: '驱逐舰' };
+const ENEMY_TYPE_NAMES = { ...TYPE_NAMES, submarine: '潜艇', coastal_artillery: '岸防炮' };
 const ARROWS = { left: '←', right: '→', front_left: '↖', front: '↑', front_right: '↗' };
 const STORAGE_KEY = 'pacific-front-planner-v1';
 const CAPTURE_BACKUP_KEY = `${STORAGE_KEY}-capture-backup`;
 const capture = globalThis.PacificFrontCapture;
 let captureConnected = false, captureClientId = null, pendingCapture = null, captureUndo = null;
+let captureConnectionKey = '', manuallyPaused = false;
 let catalog, items, worker, dirty = false;
 let filter = 'all';
 const format = value => Number(value.toFixed(2)).toLocaleString('zh-CN');
@@ -17,7 +19,7 @@ const conditionText = (global, conditions = {}) => [
   ...(conditions.itemsDisabled ? ['禁用道具（灰色、绿色）'] : []),
   ...(conditions.allowedTypes ? [`限定舰种：${conditions.allowedTypes.map(type => TYPE_NAMES[type]).join('、')}`] : []),
   ...(conditions.captureSource?.enemyPowerIncrease > 0 ? [`区域敌方战力＋${format(conditions.captureSource.enemyPowerIncrease * 100)}%（已计入）`] : []),
-  ...(conditions.captureSource?.enemyPowerIncreases ?? []).map(({ type, rate }) => `区域敌方${TYPE_NAMES[type]}战力＋${format(rate * 100)}%（已计入）`),
+  ...(conditions.captureSource?.enemyPowerIncreases ?? []).map(({ type, rate }) => `区域敌方${ENEMY_TYPE_NAMES[type]}战力＋${format(rate * 100)}%（已计入）`),
 ].join('，') || '无战场条件';
 
 function groupConditionsMarkup(condition, waveIndex, groupIndex) {
@@ -34,10 +36,10 @@ function groupConditionsMarkup(condition, waveIndex, groupIndex) {
 }
 
 function renderWaves(waves) {
-  const opened = new Set([...document.querySelectorAll('[data-wave]')].filter(wave => wave.open).map(wave => Number(wave.dataset.wave)));
+  const opened = new Map([...document.querySelectorAll('[data-wave]')].map(wave => [Number(wave.dataset.wave), wave.open]));
   const weaknessOrder = ['debuff_vertical_lines', 'debuff_concentric_target', 'debuff_ring_projectile', 'debuff_single_shell', 'debuff_three_shells', 'debuff_plane'];
   const debuffs = catalog.effect_types.filter(effect => effect.kind === 'debuff').sort((a, b) => weaknessOrder.indexOf(a.id) - weaknessOrder.indexOf(b.id));
-  $('#enemies').innerHTML = waves.map((wave, waveIndex) => `<details class="wave-input" data-wave="${waveIndex}" ${waveIndex === 0 || opened.has(waveIndex) ? 'open' : ''}>
+  $('#enemies').innerHTML = waves.map((wave, waveIndex) => `<details class="wave-input" data-wave="${waveIndex}" ${(opened.get(waveIndex) ?? (waveIndex === 0)) ? 'open' : ''}>
     <summary>第${waveIndex + 1}波 <span>${wave.enemies.length}个敌人 · ${wave.enemies.length / 4}组</span></summary>
     <label class="wave-size-label">本波敌军数量<select class="wave-size" aria-label="第${waveIndex + 1}波敌军数量">${[4, 8, 12, 16, 20].map(count => `<option value="${count}" ${count === wave.enemies.length ? 'selected' : ''}>${count}个（${count / 4}组）</option>`).join('')}</select></label>
     ${Array.from({ length: wave.enemies.length / 4 }, (_, groupIndex) => `<div class="enemy-group" data-group="${groupIndex}" data-capture-source="${escape(JSON.stringify(wave.groupConditions?.[groupIndex]?.captureSource ?? null))}"><h3>第${groupIndex + 1}组 · 从左到右</h3>${wave.groupConditions?.[groupIndex]?.captureSource ? `<p class="capture-source">采集来源：${escape(captureSourceText(wave.groupConditions[groupIndex].captureSource))} · 仅区域条件</p>` : ''}${groupConditionsMarkup(wave.groupConditions?.[groupIndex] ?? {}, waveIndex, groupIndex)}<div class="enemy-grid">${wave.enemies.slice(groupIndex * 4, groupIndex * 4 + 4).map((enemy, localIndex) => {
@@ -100,7 +102,8 @@ function readInput(validate = false) {
   });
   return { waves, cards, inventory,
     model: { stacking: 'additive', globalStacking: $('#global-stacking').value, rounding: $('#rounding').value, allowEqual: $('#allow-equal').checked, revive: $('#revive').checked },
-    beamWidth: Number($('#beam-width').value) };
+    beamWidth: Number($('#beam-width').value), computeBudget: Number($('#compute-budget').value),
+    pauseBackground: $('#pause-background').checked };
 }
 
 function restore(input) {
@@ -124,6 +127,8 @@ function restore(input) {
     $('#revive').checked = input.model.revive;
   }
   if ([300, 900, 2400].includes(input.beamWidth)) $('#beam-width').value = input.beamWidth;
+  if ([0, 30, 60].includes(input.computeBudget)) $('#compute-budget').value = input.computeBudget;
+  if (typeof input.pauseBackground === 'boolean') $('#pause-background').checked = input.pauseBackground;
 }
 
 function synchronize(save = true) {
@@ -159,8 +164,16 @@ function synchronize(save = true) {
 
 function stop() {
   worker?.terminate(); worker = null;
-  $('#calculate').disabled = false; $('#cancel').hidden = true;
+  manuallyPaused = false;
+  $('#calculate').disabled = false; $('#cancel').hidden = true; $('#pause').hidden = true;
+  $('#result-panel').classList.remove('compute-paused');
   $('#result-panel').setAttribute('aria-busy', 'false');
+}
+
+function updateSolverPause() {
+  if (!worker) return;
+  worker.postMessage({ type: 'pause', paused: manuallyPaused || ($('#pause-background').checked && document.hidden) });
+  $('#pause').textContent = manuallyPaused ? '继续计算' : '暂停计算';
 }
 function error(message) {
   stop(); $('#result-panel').innerHTML = `<p class="error" role="alert">${escape(message)}</p>`;
@@ -169,14 +182,18 @@ function error(message) {
 
 function groupResult(result, byId) {
   const complete = result.wins === result.targetCount;
-  return `<div class="result-header"><div class="result-title"><h3>第${result.group}组 · ${complete ? '全部对位胜出' : '当前配队方案'}</h3><p>${result.replayed ? '本组复用此前阵容，已重新结算生命与库存。' : result.searchMode === 'exact' ? '本组已穷举当前可用组合。' : '本组为有限搜索结果。'} 同波先前已上阵的卡牌不再参与。<br>本组战场条件：${conditionText(result.global, result.conditions)}</p></div><span class="result-badge">${result.wins} / ${result.targetCount}</span></div>
+  const searchText = result.searchMode === 'unsearched' ? '计算预算已到，本组尚未搜索。' : result.searchIncomplete ? '本组搜索未完成，显示已找到的阵容。' :
+    result.replayed ? '本组复用此前阵容，已重新结算生命与库存。' : result.searchMode === 'exact' ? '本组已穷举当前可用组合。' : '本组为有限搜索结果。';
+  const searchSummary = result.searchMode === 'unsearched' ? '尚未搜索' : result.searchIncomplete ? `搜索未完成 · 已检查 ${result.explored.toLocaleString()} 个分支` :
+    result.replayed ? '复算此前阵容' : result.searchReused ? '复用相同输入的搜索结果' : `检查 ${result.explored.toLocaleString()} 个搜索分支 · ${result.searchMode === 'exact' ? '穷举' : `搜索范围 ${result.beamWidth}`}`;
+  return `<div class="result-header"><div class="result-title"><h3>第${result.group}组 · ${complete ? '全部对位胜出' : '当前配队方案'}</h3><p>${searchText} 同波先前已上阵的卡牌不再参与。<br>本组战场条件：${conditionText(result.global, result.conditions)}</p></div><span class="result-badge">${result.wins} / ${result.targetCount}</span></div>
     <div class="result-grid">${result.positions.map(position => `<article class="position-result ${position.win ? 'win' : position.active ? 'fail' : ''}">
       <small>阵位 0${position.position + 1} · 生命 ${position.health ?? '—'} → ${position.healthAfter ?? '—'}/3</small><h3>${escape(position.name ?? '空位')}</h3>
       <div class="power-comparison"><div><small>我方最低战力</small>${format(position.ownPower)}</div><div><small>敌方最终战力</small>${position.active ? format(position.enemyPower) : '—'}</div></div>
       <p class="outcome">${!position.active ? '此位无敌人' : !position.cardId ? '未部署单位' : position.win ? `当前模型胜出 · 余量 +${format(position.margin)}` : `未达到胜出条件 · 差值 ${format(position.margin)}`}</p>
       <div class="result-items">灰色：<b>${escape(byId.get(position.standardId)?.label ?? '不装备')}</b><br>绿色：<b>${escape(byId.get(position.specialId)?.label ?? '不装备')}</b>${position.earlyHealing ? '<br><b>提前回血，为后续波次保留生命</b>' : ''}</div>
       <div class="result-effects">${position.effects.length ? position.effects.map(effect => `${escape(effect.sourceName)}：${effect.kind === 'buff' ? `${STAT_NAMES[effect.name]}＋${Math.round(effect.rate * 100)}%` : `${escape(effect.name)}减益−${format((1 - effect.multiplier) * 100)}%`}`).join('<br>') : '无有效的相邻增益或敌方减益'}${position.enemyPowerIncrease > 0 ? `<br>敌方原战力${format(position.enemyBasePower)} · 区域战力＋${format(position.enemyPowerIncrease * 100)}% · 减益按原战力结算${position.enemyPowerRoundingAssumed ? '（取整方式待核对）' : ''}` : ''}${position.stats ? `<br>结算属性：火${format(position.stats.firepower)} / 存${format(position.stats.survivability)} / 机${format(position.stats.mobility)}` : ''}</div></article>`).join('')}</div>
-    <div class="result-footer"><span>道具共 ${result.itemCount} 个：${Object.entries(result.usedItems).map(([id, quantity]) => `${escape(byId.get(id).label)} ×${quantity}`).join('，') || '无消耗'}</span><span>${result.replayed ? '复算此前阵容' : `检查 ${result.explored.toLocaleString()} 个搜索分支 · ${result.searchMode === 'exact' ? '穷举' : `搜索范围 ${result.beamWidth}`}`}</span></div>
+    <div class="result-footer"><span>道具共 ${result.itemCount} 个：${Object.entries(result.usedItems).map(([id, quantity]) => `${escape(byId.get(id).label)} ×${quantity}`).join('，') || '无消耗'}</span><span>${searchSummary}</span></div>
     `;
 }
 
@@ -185,6 +202,7 @@ function renderResult(result) {
   const cardById = new Map(catalog.cards.map(card => [card.id, card]));
   const stockText = inventory => Object.entries(inventory).filter(([id, count]) => count > 0 && byId.get(id).enabled).map(([id, count]) => `${escape(byId.get(id).label)} ×${count}`).join('，') || '无剩余可用道具';
   $('#result-panel').innerHTML = `<div class="result-header"><div class="result-title"><h2>行动配队方案 · ${result.waves.length}波</h2><p>同等胜场时先少用绿色、再少用灰色道具；各类道具和单位数量相同时优先用弱卡，保留强卡。按波次规划，失败时尝试提前回血和重新分配同波用卡；同一卡牌每波只上阵一次。此方案尚未证明整场行动全局最优。</p></div><span class="result-badge">${result.wins} / ${result.targetCount} 对位胜出</span></div>
+    ${result.searchLimited ? '<p class="section-note" role="status">已达到计算预算，保留当前已找到的方案。请核对各组“搜索未完成”或“尚未搜索”标记；可增加预算后重新计算。</p>' : ''}
     <p class="section-note">道具预计消耗${result.itemCount}个。以下生命与库存为模拟结果，未改动你的输入或游戏。空位可能用于保留无法增加本组胜场的单位。${result.groupRepairs?.length ? `<br>已重新分配同波用卡：${result.groupRepairs.map(repair => `第${repair.wave}波为第${repair.group}组预留单位`).join('；')}。请仍按原组序执行下方方案。` : ''}</p>
     ${result.waves.map(wave => `<details class="wave-result" open><summary>第${wave.wave}波 <span>${wave.groups.length}组 · ${wave.wins}/${wave.targetCount}胜出</span></summary>
       ${wave.groups.map(group => `<div class="group-result">${groupResult(group, byId)}</div>`).join('')}
@@ -192,11 +210,12 @@ function renderResult(result) {
     <div class="result-footer"><span>正向增幅加算 · 敌方减益加算 · 各组条件减益${result.model.globalStacking === 'multiply' ? '单独乘算' : '加入倍率'} · ${result.model.rounding === 'conservative' ? '保守取整' : '保留小数'} · ${result.model.allowEqual ? '相等计胜' : '严格大于才计胜'}</span><button type="button" id="copy-result">复制行动方案</button></div>`;
   $('#copy-result').addEventListener('click', async () => {
     const lines = ['同等胜场时先少用绿色、再少用灰色道具；各类道具和单位数量相同时优先用弱卡，保留强卡；逐组规划，失败时尝试提前回血及重新分配同波用卡，未证明整场行动全局最优。'];
+    if (result.searchLimited) lines.push('已达到计算预算，以下为当前方案；标记为搜索未完成或尚未搜索的组需要继续核对。');
     if (result.groupRepairs?.length) lines.push(`已重新分配同波用卡：${result.groupRepairs.map(repair => `第${repair.wave}波为第${repair.group}组预留单位`).join('；')}；按原组序执行。`);
     result.waves.forEach(wave => {
       lines.push(`第${wave.wave}波：${wave.wins}/${wave.targetCount}胜出`);
       wave.groups.forEach(group => {
-        lines.push(`第${group.group}组 · 战场条件：${conditionText(group.global, group.conditions)}`);
+        lines.push(`第${group.group}组${group.searchMode === 'unsearched' ? ' · 尚未搜索' : group.searchIncomplete ? ' · 搜索未完成' : ''} · 战场条件：${conditionText(group.global, group.conditions)}`);
         group.positions.forEach(position => lines.push(`${position.position + 1}. ${position.name ?? '空位'}｜灰：${byId.get(position.standardId)?.label ?? '无'}｜绿：${byId.get(position.specialId)?.label ?? '无'}${position.earlyHealing ? '（提前回血，为后续波次保留生命）' : ''}｜我方${format(position.ownPower)} / 敌方${format(position.enemyPower)}｜生命${position.health ?? '—'}→${position.healthAfter ?? '—'}`));
       });
       lines.push(`本波结束剩余生命：${wave.remainingCards.map(card => `${cardById.get(card.cardId).name} ${card.health}/3`).join('，')}`);
@@ -209,10 +228,11 @@ function renderResult(result) {
 }
 
 function captureSourceText(source) {
-  const typeNames = { aircraft: '飞机', battleship: '战列舰', cruiser: '巡洋舰', destroyer: '驱逐舰' };
+  const typeNames = ENEMY_TYPE_NAMES;
+  const restoredNote = source.enemyPowerIncrease || source.enemyPowerIncreases?.length ? '已去除带入，保留区域增益' : '已还原原战力';
   const typed = (source.enemyPowerIncreases ?? []).map(({ type, rate }) => ` · 区域敌方${typeNames[type]}战力＋${format(rate * 100)}%（已计入敌军数值）`).join('');
-  const restored = (source.ignoredEnemyPowerIncreases ?? []).map(({ type, rate }) => ` · 带入敌方${typeNames[type]}战力＋${format(rate * 100)}%（已还原原战力）`).join('');
-  return `${source.action} · 阶段${source.stage} · 关键据点${source.keypoint}${source.enemyPowerIncrease > 0 ? ` · 区域敌方战力＋${format(source.enemyPowerIncrease * 100)}%（已计入敌军数值）` : ''}${typed}${restored}${source.ignoredEnemyPowerIncrease > 0 ? ` · 带入敌方战力＋${format(source.ignoredEnemyPowerIncrease * 100)}%（已还原原战力）` : ''}`;
+  const restored = (source.ignoredEnemyPowerIncreases ?? []).map(({ type, rate }) => ` · 带入敌方${typeNames[type]}战力＋${format(rate * 100)}%（${restoredNote}）`).join('');
+  return `${source.action} · 阶段${source.stage} · 关键据点${source.keypoint}${source.enemyPowerIncrease > 0 ? ` · 区域敌方战力＋${format(source.enemyPowerIncrease * 100)}%（已计入敌军数值）` : ''}${typed}${restored}${source.ignoredEnemyPowerIncrease > 0 ? ` · 带入敌方战力＋${format(source.ignoredEnemyPowerIncrease * 100)}%（${restoredNote}）` : ''}`;
 }
 
 function captureFeedback(message, failed = false) {
@@ -239,6 +259,9 @@ function refreshCaptureTargets() {
 
 function updateCaptureConnection() {
   const connected = captureConnected;
+  const key = `${connected}:${Boolean(pendingCapture)}:${Boolean(captureUndo)}`;
+  if (key === captureConnectionKey) return connected;
+  captureConnectionKey = key;
   $('#capture-current').disabled = !connected || Boolean(pendingCapture);
   $('#capture-file-button').disabled = Boolean(pendingCapture);
   $('#capture-undo').disabled = !captureUndo || Boolean(pendingCapture);
@@ -304,8 +327,9 @@ function setupCapture() {
       saved.previous?.enemies?.length === 4 && saved.previous.condition && saved.applied?.enemies?.length === 4 && saved.applied.condition) captureUndo = saved;
   } catch { /* 损坏或不可用的回退记录不影响正常输入。 */ }
   updateCaptureConnection();
-  let statusBusy = false;
+  let statusBusy = false, statusTimer = null;
   const pollCaptureStatus = async () => {
+    clearTimeout(statusTimer);
     if (statusBusy || !capture.token) return;
     statusBusy = true;
     try {
@@ -322,7 +346,11 @@ function setupCapture() {
     } catch (error) {
       captureConnected = false; updateCaptureConnection();
       if (pendingCapture?.kind === 'live') cancelPendingCapture(error.message);
-    } finally { statusBusy = false; }
+    } finally {
+      statusBusy = false;
+      const delay = pendingCapture?.kind === 'live' ? 250 : document.hidden ? 20000 : captureConnected ? 2000 : 5000;
+      statusTimer = setTimeout(pollCaptureStatus, delay);
+    }
   };
   const configureCapture = async () => {
     capture.token = null;
@@ -333,11 +361,10 @@ function setupCapture() {
       if (!/^[a-f0-9]{64}$/.test(config.token ?? '')) throw new Error('本机采集配对码无效，请重启服务。');
       capture.token = config.token;
       await pollCaptureStatus();
-    } catch (error) { captureFeedback(error.message, true); }
+    } catch (error) { captureConnected = false; updateCaptureConnection(); captureFeedback(error.message, true); }
   };
   void configureCapture();
-  setInterval(pollCaptureStatus, 750);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void pollCaptureStatus(); });
+  document.addEventListener('visibilitychange', () => { void pollCaptureStatus(); });
   $('#capture-target').addEventListener('change', () => { cancelPendingCapture('目标组已改变，请重新抓取。'); refreshCaptureTargets(); });
   $('#capture-current').addEventListener('click', async () => {
     if (!updateCaptureConnection()) return;
@@ -449,20 +476,29 @@ try {
       const input = readInput(true);
       if (!input.cards.length) throw new Error('请先勾选你的可用卡牌。');
       stop(); synchronize(); dirty = false;
-      $('#calculate').disabled = true; $('#cancel').hidden = false; $('#result-panel').setAttribute('aria-busy', 'true');
-      $('#result-panel').innerHTML = '<div class="empty-result"><h2>正在比较阵容与道具组合</h2><div class="progress-bar"><span></span></div><p id="progress-text">计算不会改变游戏或扣减库存。</p></div>';
+      $('#calculate').disabled = true; $('#cancel').hidden = false; $('#pause').hidden = false; $('#pause').textContent = '暂停计算';
+      $('#result-panel').setAttribute('aria-busy', 'true');
+      $('#result-panel').innerHTML = '<div class="empty-result"><h2>正在比较阵容与道具组合</h2><div class="progress-bar"><span></span></div><p id="progress-text">计算不会改变游戏或扣减库存。</p><p id="budget-text">正在启动计算……</p></div>';
       $('#result-panel').scrollIntoView({ behavior: 'smooth', block: 'center' });
       worker = new Worker('worker.js', { type: 'module' });
       const job = worker;
       worker.onmessage = ({ data }) => {
         if (worker !== job) return;
         if (data.type === 'progress') $('#progress-text').textContent = `${data.progress.phase === 'repair' ? `重新分配同波用卡 ${data.progress.attempt}/4 · ` : data.progress.phase === 'healing' ? `提前回血重试 ${data.progress.attempt}/12 · ` : ''}第${data.progress.wave}波 / 第${data.progress.group}组 · 阵位搜索${data.progress.stage}/4 · 已完成${data.progress.completedGroups}/${data.progress.totalGroups}组`;
+        if (data.type === 'budget') $('#budget-text').textContent = `已计算 ${(data.elapsedMs / 1000).toFixed(1)} 秒${input.computeBudget ? ` / ${input.computeBudget} 秒预算` : ' · 不限计算时间'}（暂停与让出时间不计入）`;
+        if (data.type === 'paused') {
+          $('#result-panel').classList.toggle('compute-paused', data.paused);
+          $('#progress-text').textContent = data.paused ? (manuallyPaused ? '已暂停，点击“继续计算”接着搜索。' : '页面已转入后台，计算暂停；返回后继续。') : '已继续，正在接着原进度搜索……';
+        }
         if (data.type === 'result') { stop(); renderResult(data.result); }
         if (data.type === 'error') error(data.message);
       };
       worker.onerror = () => { if (worker === job) error('计算进程未能运行，请重新启动本地网页后再试。'); };
       worker.postMessage({ input, catalog, items, beamWidth: input.beamWidth });
+      updateSolverPause();
     } catch (failure) { error(failure.message); }
   });
   $('#cancel').addEventListener('click', () => { stop(); $('#result-panel').innerHTML = '<p class="section-note">已取消。输入和库存均已保留。</p>'; });
+  $('#pause').addEventListener('click', () => { manuallyPaused = !manuallyPaused; updateSolverPause(); });
+  document.addEventListener('visibilitychange', updateSolverPause);
 } catch (failure) { error(failure.message); $('#calculate').disabled = true; }

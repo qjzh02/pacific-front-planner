@@ -70,6 +70,21 @@ class ItemCatalogTests(unittest.TestCase):
         self.assertEqual(rules["enemy_power_increase_other_debuff_combinations"],
                          "base_power * (1 + increase_rate - sum(debuff_rates))")
 
+    def test_confirmed_capture_stacking_and_user_samples(self):
+        rules = {key: json.loads(value) for key, value in self.connection.execute("SELECT key, value_json FROM rules")}
+        self.assertEqual(rules["enemy_power_increase_capture_stacking"], {
+            "stacking": "additive", "rounding": "nearest_integer", "carried_global_rate": 0.08,
+            "typed_rate": 0.16, "combined_rate": 0.24,
+            "restore_formula": "round(displayed_power / (1 + carried_rate + regional_rate))",
+            "retain_formula": "round(base_power * (1 + regional_rate))",
+        })
+        samples = rules["rule_sources"]["user_confirmed_enemy_capture_stacking"]
+        self.assertEqual(samples["carried_destroyer"]["base"], [137, 177, 207, 161, 145, 164, 139])
+        self.assertEqual(samples["carried_destroyer"]["displayed"], [170, 219, 257, 200, 180, 203, 172])
+        self.assertEqual(samples["mixed_submarine"]["base"], 139)
+        self.assertEqual(samples["mixed_submarine"]["displayed"], 172)
+        self.assertIn("enemy_power_increase_capture_stacking", rules["rule_sources"]["user_confirmed"])
+
     def test_special_item_effects(self):
         items = {key: json.loads(value) for key, value in self.connection.execute(
             "SELECT id, parameters_json FROM items WHERE slot='special'"

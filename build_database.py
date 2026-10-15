@@ -51,6 +51,12 @@ def validate(catalog, item_catalog):
         "formula": "round(base_power * (1 + increase_rate - debuff_rate))",
     }
     assert rules["enemy_power_increase_other_debuff_combinations"] == "base_power * (1 + increase_rate - sum(debuff_rates))"
+    assert rules["enemy_power_increase_capture_stacking"] == {
+        "stacking": "additive", "rounding": "nearest_integer", "carried_global_rate": 0.08,
+        "typed_rate": 0.16, "combined_rate": 0.24,
+        "restore_formula": "round(displayed_power / (1 + carried_rate + regional_rate))",
+        "retain_formula": "round(base_power * (1 + regional_rate))",
+    }
     items = item_catalog["items"]
     item_ids = {item["id"] for item in items}
     assert len(item_ids) == len(items), "Duplicate item ID"

@@ -66,6 +66,49 @@ test('请求、读取、结果只按当前请求编号返回，不复用旧结�
   });
 });
 
+test('接口接受四种增益减益条件和组合，拒绝非布尔开关', async () => {
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'client-buff' } });
+    await call('request', { body: { requestId: 'request-buff' } });
+    const flags = ['buffsDisabled', 'debuffsDisabled', 'buffsReduced', 'debuffsReduced'];
+    for (const flag of flags) for (const value of ['true', 1, null]) {
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-buff', requestId: 'request-buff',
+        snapshot: { ...snapshot, condition: { ...snapshot.condition, [flag]: value } } } })).status, 400);
+      assert.equal((await (await call('status')).json()).result, null);
+    }
+    for (const active of [...flags.map(flag => [flag]), ['buffsReduced', 'debuffsReduced'], ['buffsDisabled', 'debuffsDisabled']]) {
+      await call('request', { body: { requestId: 'request-buff' } });
+      const accepted = { ...snapshot, condition: { ...snapshot.condition, ...Object.fromEntries(flags.map(flag => [flag, active.includes(flag)])) } };
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-buff', requestId: 'request-buff', snapshot: accepted } })).status, 200);
+      assert.deepEqual((await (await call('status')).json()).result.snapshot, accepted);
+    }
+  });
+});
+
+test('快照入口拒绝未知提升比例、缺失舰种逐敌军比例和无法还原值，不覆盖待处理结果', async () => {
+  const api = globalThis.PacificFrontCapture;
+  const invalid = [
+    { ...snapshot, source: { ...snapshot.source, enemyPowerIncrease: 0.5 } },
+    { ...snapshot, source: { action: '测试', stage: 1, keypoint: 1, enemyPowerIncreases: [{ type: 'cruiser', rate: 0.12 }] } },
+    { ...snapshot, source: { action: '测试', stage: 1, keypoint: 1, enemyPowerIncreases: [{ type: 'cruiser', rate: 0.16 }] } },
+    { ...snapshot, enemies: snapshot.enemies.map(enemy => ({ ...enemy, power: 7 })) },
+  ];
+  for (const sample of invalid) assert.throws(() => api.validateSnapshot(sample));
+  const input = { waves: [{ enemies: snapshot.enemies, groupConditions: [{}] }], cards: [], inventory: {} };
+  const original = structuredClone(input);
+  for (const sample of invalid) assert.throws(() => api.mergeSnapshot(input, 0, 0, sample));
+  assert.deepEqual(input, original);
+  assert.doesNotThrow(() => api.validateSnapshot(snapshot)); // legacy global source supplies each missing rate
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'strict-source' } });
+    await call('request', { body: { requestId: 'strict-request' } });
+    for (const sample of invalid) {
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'strict-source', requestId: 'strict-request', snapshot: sample } })).status, 400);
+      assert.equal((await (await call('status')).json()).result, null);
+    }
+  });
+});
+
 test('拒绝无效结果及超大请求，游戏页接管后拒绝旧连接', async () => {
   await withRelay(async call => {
     await call('game', { game: true, body: { type: 'connect', clientId: 'client-a' } });
@@ -80,7 +123,7 @@ test('拒绝无效结果及超大请求，游戏页接管后拒绝旧连接', as
   });
 });
 
-test('接口校验舰种提升来源，保留有效记录并拒绝无效或与带入还原叠加', async () => {
+test('接口校验舰种提升来源，保留有效记录并拒绝无效及未核对叠加', async () => {
   await withRelay(async call => {
     await call('game', { game: true, body: { type: 'connect', clientId: 'client-boost' } });
     await call('request', { body: { requestId: 'request-boost' } });
@@ -96,8 +139,8 @@ test('接口校验舰种提升来源，保留有效记录并拒绝无效或与�
         snapshot: { ...snapshot, source, enemies: snapshot.enemies.map(enemy => ({ ...enemy, powerIncrease })) } } })).status, 400);
     }
     assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-boost',
-      snapshot: { ...snapshot, source: { ...source, ignoredEnemyPowerIncrease: 0.08 } } } })).status, 400);
-    const typed = { ...snapshot, source };
+      snapshot: { ...snapshot, source: { ...source, enemyPowerIncrease: 0.08, ignoredEnemyPowerIncrease: 0.08 } } } })).status, 400);
+    const typed = { ...snapshot, source, enemies: snapshot.enemies.map(enemy => ({ ...enemy, powerIncrease: 0 })) };
     assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-boost', snapshot: typed } })).status, 200);
     assert.deepEqual((await (await call('status')).json()).result.snapshot, typed);
     await call('request', { body: { requestId: 'request-restored-types' } });
@@ -105,7 +148,7 @@ test('接口校验舰种提升来源，保留有效记录并拒绝无效或与�
       { ...typed.source, ignoredEnemyPowerIncreases: [boost] },
       { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [{ ...boost, rate: 0.12 }] },
       { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost, boost] },
-      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost], ignoredEnemyPowerIncrease: 0.08 },
+      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost], ignoredEnemyPowerIncrease: 0.08, enemyPowerIncrease: 0.16 },
     ]) {
       assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-restored-types',
         snapshot: { ...snapshot, source } } })).status, 400);
@@ -116,11 +159,46 @@ test('接口校验舰种提升来源，保留有效记录并拒绝无效或与�
   });
 });
 
+test('接口接受两层带入及带入8%与潜艇区域16%，拒绝三层重叠', async () => {
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'client-stacked' } });
+    const carriedSource = { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncrease: 0.08,
+      ignoredEnemyPowerIncreases: [{ type: 'destroyer', rate: 0.16 }] };
+    for (const [requestId, source, powers, rates] of [
+      ['carried', carriedSource, [131, 154, 146, 137], []],
+      ['mixed', { ...carriedSource, enemyPowerIncreases: [{ type: 'submarine', rate: 0.16 }] }, [145, 164, 161, 153], [0, 0, 0.16, 0]],
+    ]) {
+      await call('request', { body: { requestId } });
+      const accepted = { ...snapshot, source, enemies: powers.map((power, i) => ({ ...snapshot.enemies[i], power,
+        ...(rates.length ? { powerIncrease: rates[i] } : {}) })) };
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-stacked', requestId, snapshot: accepted } })).status, 200);
+      assert.deepEqual((await (await call('status')).json()).result.snapshot, accepted);
+    }
+    await call('request', { body: { requestId: 'invalid-stack' } });
+    const overlapping = { ...carriedSource, enemyPowerIncreases: [{ type: 'destroyer', rate: 0.16 }] };
+    assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-stacked', requestId: 'invalid-stack',
+      snapshot: { ...snapshot, source: overlapping } } })).status, 400);
+    assert.equal((await (await call('status')).json()).result, null);
+  });
+});
+
+test('接口接受岸防炮提升来源并保持每个敌军的区域比例', async () => {
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'client-coastal' } });
+    await call('request', { body: { requestId: 'request-coastal' } });
+    const accepted = { ...snapshot, source: { action: '测试行动', stage: 1, keypoint: 1,
+      enemyPowerIncreases: [{ type: 'coastal_artillery', rate: 0.16 }] },
+    enemies: [177, 187, 204, 201].map((power, i) => ({ ...snapshot.enemies[i], power, powerIncrease: i < 3 ? 0.16 : 0 })) };
+    assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-coastal', requestId: 'request-coastal', snapshot: accepted } })).status, 200);
+    assert.deepEqual((await (await call('status')).json()).result.snapshot, accepted);
+  });
+});
+
 test('接口接受有效区域舰种限制，拒绝空值、重复或未知类型', async () => {
   await withRelay(async call => {
     await call('game', { game: true, body: { type: 'connect', clientId: 'client-types' } });
     await call('request', { body: { requestId: 'request-types' } });
-    for (const allowedTypes of [[], ['unknown'], ['cruiser', 'cruiser'], 'battleship']) {
+    for (const allowedTypes of [[], ['unknown'], ['submarine'], ['coastal_artillery'], ['cruiser', 'cruiser'], 'battleship']) {
       assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-types', requestId: 'request-types',
         snapshot: { ...snapshot, condition: { ...snapshot.condition, allowedTypes } } } })).status, 400);
     }

@@ -90,29 +90,36 @@ function variant(entry, position, ctx) {
     }
   }
   const usage = ctx.itemIds.map(id => Number(id === entry.standardId || id === entry.specialId));
+  const healthFactor = [0, 0.8, 0.9, 1][health];
+  const baseStats = STATS.map(stat => card[stat] * healthFactor);
+  const positiveBase = STATS.map(stat => {
+    const standardRate = standardParameters.stat === stat ? standardParameters.stat_multiplier - 1 : 0;
+    const totalRate = (specialParameters.total_stat_multiplier ?? 1) - 1;
+    return ctx.model.stacking === 'additive' ? 1 + standardRate + totalRate : (1 + standardRate) * (1 + totalRate);
+  });
+  const reductions = STATS.map(stat => specialParameters.ignore_battle_conditions ? 0 : ctx.global[stat]);
   return { card, index: selected.index, health, originalHealth: selected.health, standardId: entry.standardId ?? null,
-    specialId: entry.specialId ?? null, standardParameters, specialParameters, left, right, debuffs, outgoing, usage,
+    specialId: entry.specialId ?? null, baseStats, positiveBase, reductions, left, right, debuffs, outgoing, usage,
     cost: usage.reduce((sum, used) => sum + used, 0) };
 }
 
-function positionResult(position, left, current, right, ctx, explain = false) {
+function positionResult(position, left, current, right, ctx, explain = false, score = {}) {
   const enemy = ctx.enemies[position];
   let stats = null, ownRaw = 0;
   if (current) {
-    stats = {};
-    const healthFactor = [0, 0.8, 0.9, 1][current.health];
-    STATS.forEach((stat, index) => {
-      const standardRate = current.standardParameters.stat === stat ? current.standardParameters.stat_multiplier - 1 : 0;
-      const totalRate = (current.specialParameters.total_stat_multiplier ?? 1) - 1;
+    if (explain) stats = {};
+    for (let index = 0; index < STATS.length; index++) {
       const leftRate = left?.right[index] ?? 0;
       const rightRate = right?.left[index] ?? 0;
-      const positive = ctx.model.stacking === 'additive' ? 1 + standardRate + totalRate + leftRate + rightRate :
-        (1 + standardRate) * (1 + totalRate) * (1 + leftRate) * (1 + rightRate);
-      const reduction = current.specialParameters.ignore_battle_conditions ? 0 : ctx.global[stat];
+      const positive = ctx.model.stacking === 'additive' ? current.positiveBase[index] + leftRate + rightRate :
+        current.positiveBase[index] * (1 + leftRate) * (1 + rightRate);
+      const reduction = current.reductions[index];
       const multiplier = ctx.model.globalStacking === 'multiply' ? positive * (1 - reduction) : Math.max(0, positive - reduction);
-      stats[stat] = current.card[stat] * healthFactor * multiplier;
-    });
-    ownRaw = Math.max(0, STATS.reduce((sum, stat) => sum + stats[stat], 0) - 10);
+      const value = current.baseStats[index] * multiplier;
+      ownRaw += value;
+      if (explain) stats[STATS[index]] = value;
+    }
+    ownRaw = Math.max(0, ownRaw - 10);
   }
   const debuffMultiplier = 1 - ((left?.debuffs[2] ?? 0) + (current?.debuffs[1] ?? 0) + (right?.debuffs[0] ?? 0));
   const increased = enemy.powerIncrease > 0 && debuffMultiplier < 1;
@@ -123,11 +130,16 @@ function positionResult(position, left, current, right, ctx, explain = false) {
   const enemyPower = calibrated ? Math.round(enemyRaw) : ctx.model.rounding === 'conservative' ? Math.ceil(enemyRaw - 1e-8) : enemyRaw;
   const margin = current && enemy.active ? ownPower - enemyPower : -enemyPower;
   const win = Boolean(current && enemy.active && (ctx.model.allowEqual ? margin >= -1e-8 : margin > 1e-8));
+  // 搜索复用这个小对象；仅最终阵容需要属性、名称和效果说明。
+  if (!explain) {
+    score.active = enemy.active; score.margin = margin; score.win = win;
+    return score;
+  }
   const result = { position, active: enemy.active, ownPower, enemyPower, ownRaw, enemyRaw, stats, margin, win,
     enemyBasePower: enemy.basePower, enemyPowerIncrease: enemy.powerIncrease, enemyPowerRoundingAssumed: increased && !calibrated,
     cardId: current?.card.id ?? null, name: current?.card.name ?? null, health: current?.health ?? null,
     originalHealth: current?.originalHealth ?? null, standardId: current?.standardId ?? null, specialId: current?.specialId ?? null };
-  if (explain) result.effects = [left, current, right].flatMap(source => source?.outgoing
+  result.effects = [left, current, right].flatMap(source => source?.outgoing
     .filter(effect => effect.target === position && (effect.kind === 'debuff' || source !== current))
     .map(effect => ({ ...effect, sourceName: source.card.name })) ?? []);
   return result;
@@ -218,7 +230,7 @@ class BestHeap {
   }
 }
 
-export function solve(input, catalog, itemCatalog, options = {}) {
+function* search(input, catalog, itemCatalog, options = {}) {
   const ctx = context(input, catalog, itemCatalog);
   const choices = Array.from({ length: 4 }, (_, position) => candidates(position, ctx));
   const usable = new Set(choices.flat().map(unit => unit.card.id));
@@ -233,71 +245,156 @@ export function solve(input, catalog, itemCatalog, options = {}) {
     left: STATS.map((_, index) => Math.max(0, ...list.map(unit => unit?.left[index] ?? 0))),
     debuffs: [Math.max(0, ...list.map(unit => unit?.debuffs[0] ?? 0)), 0, 0],
   }));
-  let best = null, explored = 0;
-  const initial = { lineup: [], counts: stock.map(() => 0), mask: 0, wins: 0, cost: 0, specialCount: 0, units: 0, strength: 0, margins: [] };
+  const activeSuffix = Array(5).fill(0);
+  for (let position = 3; position >= 0; position--) activeSuffix[position] = activeSuffix[position + 1] + Number(ctx.enemies[position].active);
+  const score = {};
+  let best = null, explored = 0, accounted = 0, interrupted = false;
+  const initial = { lineup: [], counts: stock.map(() => 0), mask: 0, wins: 0, cost: 0, specialCount: 0, units: 0, strength: 0, minMargin: Infinity, totalMargin: 0 };
+  let frontier = initial;
+  const account = () => {
+    if (options.control) options.control.explored += explored - accounted;
+    accounted = explored;
+  };
   function extend(state, unit, depth) {
     explored++;
     if (unit && (state.mask & (1 << unit.index))) return null;
     const units = state.units + Number(Boolean(unit));
     if (units + 3 - depth < requiredUnits) return null;
-    const counts = unit ? state.counts.map((count, index) => count + unit.usage[index]) : state.counts;
-    if (counts.some((count, index) => count > stock[index])) return null;
-    const lineup = [...state.lineup, unit];
-    let wins = state.wins, margins = state.margins;
-    if (depth > 0) {
-      const finished = positionResult(depth - 1, lineup[depth - 2], lineup[depth - 1], unit, ctx);
-      wins += Number(finished.win);
-      if (finished.active) margins = [...margins, finished.margin];
+    const counts = unit ? new Array(stock.length) : state.counts;
+    if (unit) for (let index = 0; index < stock.length; index++) {
+      counts[index] = state.counts[index] + unit.usage[index];
+      if (counts[index] > stock[index]) return null;
     }
-    const pending = positionResult(depth, lineup[depth - 1], unit, depth === 3 ? null : optimistic[depth + 1], ctx);
+    const lineup = [...state.lineup, unit];
+    let wins = state.wins, minMargin = state.minMargin, totalMargin = state.totalMargin;
+    if (depth > 0) {
+      const finished = positionResult(depth - 1, lineup[depth - 2], lineup[depth - 1], unit, ctx, false, score);
+      wins += Number(finished.win);
+      if (finished.active) { minMargin = Math.min(minMargin, finished.margin); totalMargin += finished.margin; }
+    }
+    const pending = positionResult(depth, lineup[depth - 1], unit, depth === 3 ? null : optimistic[depth + 1], ctx, false, score);
     if (depth === 3) {
       wins += Number(pending.win);
-      if (pending.active) margins = [...margins, pending.margin];
+      if (pending.active) { minMargin = Math.min(minMargin, pending.margin); totalMargin += pending.margin; }
     }
-    const projectedMargins = depth === 3 ? margins : [...margins, ...(pending.active ? [pending.margin] : [])];
+    const projectedMin = depth < 3 && pending.active ? Math.min(minMargin, pending.margin) : minMargin;
+    const projectedTotal = depth < 3 && pending.active ? totalMargin + pending.margin : totalMargin;
     const cost = state.cost + (unit?.cost ?? 0);
     const specialCount = state.specialCount + Number(Boolean(unit?.specialId));
     const strength = state.strength + (unit?.card.power_min ?? 0);
-    const possibleWins = depth === 3 ? wins : wins + Number(pending.win) + ctx.enemies.slice(depth + 1).filter(enemy => enemy.active).length;
-    const conservation = options.allowEmpty ? [-units] : [];
-    const rank = depth === 3 ? [wins, -specialCount, -cost, ...conservation, -strength, Math.min(...margins), margins.reduce((sum, margin) => sum + margin, 0)] :
-      [possibleWins, wins, -specialCount, -cost, ...conservation, -strength, Math.min(...projectedMargins), projectedMargins.reduce((sum, margin) => sum + margin, 0)];
-    return { lineup, counts, mask: state.mask | (unit ? 1 << unit.index : 0), wins, cost, specialCount, units, strength, margins, rank };
+    const possibleWins = depth === 3 ? wins : wins + Number(pending.win) + activeSuffix[depth + 1];
+    const rank = depth === 3 ? [wins, -specialCount, -cost] : [possibleWins, wins, -specialCount, -cost];
+    if (options.allowEmpty) rank.push(-units);
+    rank.push(-strength, projectedMin, projectedTotal);
+    return { lineup, counts, mask: state.mask | (unit ? 1 << unit.index : 0), wins, cost, specialCount, units, strength, minMargin, totalMargin, rank };
   }
   if (exact) {
-    function visit(state, depth) {
-      for (const unit of choices[depth]) {
-        const next = extend(state, unit, depth);
-        if (!next) continue;
+    const states = [initial], indices = [0, 0, 0, 0];
+    let depth = 0;
+    while (depth >= 0) {
+      if (indices[depth] >= choices[depth].length) { depth--; continue; }
+      const next = extend(states[depth], choices[depth][indices[depth]++], depth);
+      if (next) {
+        if (!best) frontier = next;
         if (depth === 3) { if (!best || compare(next, best) > 0) best = next; }
-        else if (!best || next.wins + ctx.enemies.slice(depth).filter(enemy => enemy.active).length >= best.wins) visit(next, depth + 1);
+        else if (!best || next.wins + activeSuffix[depth] >= best.wins) {
+          states[++depth] = next; indices[depth] = 0;
+        }
+      }
+      if ((explored & 1023) === 0) {
+        account(); yield;
+        if (options.control?.stopped) { interrupted = true; break; }
       }
     }
-    visit(initial, 0);
   } else {
     let beam = [initial];
     // Keep a separate quota for each last card so support cards survive pruning.
     const perCard = Math.ceil(limit / (usable.size + Number(requiredUnits < 4)));
-    for (let depth = 0; depth < 4; depth++) {
+    depths: for (let depth = 0; depth < 4; depth++) {
       const heaps = new Map();
       for (const state of beam) for (const unit of choices[depth]) {
         const next = extend(state, unit, depth);
-        if (!next) continue;
-        if (depth === 3) { if (!best || compare(next, best) > 0) best = next; continue; }
-        const key = unit?.card.id ?? 'empty';
-        if (!heaps.has(key)) heaps.set(key, new BestHeap(perCard));
-        heaps.get(key).add(next);
+        if (next) {
+          if (!best) frontier = next;
+          if (depth === 3) { if (!best || compare(next, best) > 0) best = next; }
+          else {
+            const key = unit?.card.id ?? 'empty';
+            if (!heaps.has(key)) heaps.set(key, new BestHeap(perCard));
+            heaps.get(key).add(next);
+          }
+        }
+        if ((explored & 1023) === 0) {
+          account(); yield;
+          if (options.control?.stopped) { interrupted = true; break depths; }
+        }
       }
       if (depth < 3) beam = [...heaps.values()].flatMap(heap => heap.values).sort((a, b) => compare(b, a)).slice(0, limit);
       options.onProgress?.({ stage: depth + 1, explored });
     }
   }
-  check(best, '库存与可用单位无法组成阵容，请检查输入。');
-  return { ...summarize(best.lineup, ctx), searchMode: exact ? 'exact' : 'bounded', explored,
+  account(); yield;
+  if (interrupted && !best && options.allowEmpty) {
+    const complete = state => {
+      while (state.lineup.length < 4) state = extend(state, null, state.lineup.length);
+      return state;
+    };
+    // 尚未走到完整阵容时，也要与已知可行的空阵比较，避免零胜场白耗生命或道具。
+    const partial = complete(frontier), empty = complete(initial);
+    best = compare(partial, empty) > 0 ? partial : empty;
+    account();
+  }
+  check(best || interrupted, '库存与可用单位无法组成阵容，请检查输入。');
+  const lineup = best?.lineup ?? [...frontier.lineup, ...Array(4 - frontier.lineup.length).fill(null)];
+  return { ...summarize(lineup, ctx), searchMode: exact ? 'exact' : 'bounded', explored,
+    ...(interrupted ? { searchIncomplete: true } : {}),
     beamWidth: exact ? null : limit, combinationUpperBound: bound };
 }
 
+export function solve(input, catalog, itemCatalog, options = {}) {
+  const steps = search(input, catalog, itemCatalog, options);
+  let step;
+  do { step = steps.next(); } while (!step.done);
+  return step.value;
+}
+
+function budget(options) {
+  const maxTimeMs = options.maxTimeMs ?? Infinity, maxBranches = options.maxBranches ?? Infinity;
+  check(typeof maxTimeMs === 'number' && maxTimeMs > 0 && typeof maxBranches === 'number' && maxBranches > 0 &&
+    (maxBranches === Infinity || Number.isInteger(maxBranches)), '计算预算必须为正数或不限。');
+  return { maxTimeMs, maxBranches, elapsedMs: 0, explored: 0, stopped: false };
+}
+
+function advance(steps, control) {
+  const start = performance.now(), step = steps.next();
+  control.elapsedMs += performance.now() - start;
+  if (control.elapsedMs >= control.maxTimeMs || control.explored >= control.maxBranches) control.stopped = true;
+  return step;
+}
+
 export function solveAction(input, catalog, itemCatalog, options = {}) {
+  const control = budget(options), steps = actionSteps(input, catalog, itemCatalog, options, control);
+  let step;
+  do { step = advance(steps, control); } while (!step.done);
+  return { ...step.value, searchLimited: control.stopped, searchElapsedMs: control.elapsedMs };
+}
+
+export async function solveActionAsync(input, catalog, itemCatalog, options = {}) {
+  const control = budget(options), steps = actionSteps(input, catalog, itemCatalog, options, control);
+  const schedule = options.schedule ?? (() => new Promise(resolve => setTimeout(resolve, 16)));
+  const timeSliceMs = options.timeSliceMs ?? 12;
+  let sliceStart = performance.now(), lastNotice = -Infinity;
+  while (true) {
+    const step = advance(steps, control);
+    if (step.done || performance.now() - lastNotice >= 200) {
+      options.onBudget?.({ elapsedMs: control.elapsedMs, explored: control.explored });
+      lastNotice = performance.now();
+    }
+    if (step.done) return { ...step.value, searchLimited: control.stopped, searchElapsedMs: control.elapsedMs };
+    if (performance.now() - sliceStart >= timeSliceMs) { await schedule(); sliceStart = performance.now(); }
+  }
+}
+
+function* actionSteps(input, catalog, itemCatalog, options, control) {
   check(Array.isArray(input.waves) && input.waves.length >= 1 && input.waves.length <= 6, '每次行动必须有1至6波敌人。');
   // Validate the entire action before spending any simulated resources.
   const waveGroups = input.waves.map((wave, waveIndex) => {
@@ -313,17 +410,21 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
     });
   });
   const totalGroups = waveGroups.reduce((sum, groups) => sum + groups.length, 0);
-  let workExplored = 0;
-  function plan(prefix = [], attempt = 0, priority = null) {
+  // 仅在本次行动复用完整输入相同的搜索；缓存快照不参与生命、库存和提前回血的修改。
+  const searchCache = new Map();
+  let workExplored = 0, searchCacheHits = 0;
+  function* plan(prefix = [], attempt = 0, priority = null) {
     const cards = input.cards.map(card => ({ ...card }));
     const inventory = Object.fromEntries(itemCatalog.items.map(item => [item.id, input.inventory?.[item.id] ?? 0]));
     let wins = 0, targetCount = 0, itemCount = 0, explored = 0, completedGroups = 0;
     const usedItems = {}, waves = [], earlyHealing = [];
-    waveGroups.forEach((groups, waveIndex) => {
+    for (let waveIndex = 0; waveIndex < waveGroups.length; waveIndex++) {
+      const groups = waveGroups[waveIndex];
       const deployed = new Set();
       const order = groups.map((_, i) => i);
       if (priority?.waveIndex === waveIndex) order.unshift(...order.splice(order.indexOf(priority.groupIndex), 1));
-      const results = order.map(groupIndex => {
+      const results = [];
+      for (const groupIndex of order) {
         const { enemies, global, conditions } = groups[groupIndex];
         const available = cards.filter(card => !deployed.has(card.cardId));
         const groupInput = { ...input, enemies, global, conditions, cards: available, inventory };
@@ -333,10 +434,21 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
         if (prefix[completedGroups]) {
           result = { ...prefix[completedGroups], ...evaluateFormation(prefix[completedGroups].formation,
             available.length ? groupInput : { ...groupInput, cards }, catalog, itemCatalog), replayed: true, explored: 0 };
+        } else if (control.stopped) {
+          result = { ...evaluateFormation([null, null, null, null], available.length ? groupInput : { ...groupInput, cards }, catalog, itemCatalog),
+            searchMode: 'unsearched', searchIncomplete: true, explored: 0 };
         } else if (available.length) {
-          result = solve(groupInput, catalog, itemCatalog, { ...options, allowEmpty: true,
-            onProgress: progress => options.onProgress?.({ ...progress, ...progressContext }) });
-          workExplored += result.explored;
+          const key = JSON.stringify([enemies, global, conditions, available, inventory, input.model, options.beamWidth, options.exactLimit]);
+          const cached = searchCache.get(key);
+          if (cached) {
+            result = { ...structuredClone(cached), explored: 0, searchReused: true };
+            searchCacheHits++;
+          } else {
+            result = yield* search(groupInput, catalog, itemCatalog, { ...options, control, allowEmpty: true,
+              onProgress: progress => options.onProgress?.({ ...progress, ...progressContext }) });
+            workExplored += result.explored;
+            if (!result.searchIncomplete) searchCache.set(key, structuredClone(result));
+          }
         } else {
           result = { ...evaluateFormation([null, null, null, null], { ...groupInput, cards }, catalog, itemCatalog), searchMode: 'exact', explored: 0 };
         }
@@ -355,21 +467,23 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
         wins += result.wins; targetCount += result.targetCount; itemCount += result.itemCount; explored += result.explored;
         completedGroups++;
         options.onProgress?.({ ...progressContext, stage: 4, explored, completedGroups });
-        return { ...result, group: groupIndex + 1 };
-      }).sort((a, b) => a.group - b.group);
+        results.push({ ...result, group: groupIndex + 1 });
+        yield;
+      }
+      results.sort((a, b) => a.group - b.group);
       waves.push({ wave: waveIndex + 1, groups: results, wins: results.reduce((sum, group) => sum + group.wins, 0),
         targetCount: results.reduce((sum, group) => sum + group.targetCount, 0),
         remainingCards: cards.map(card => ({ ...card })), remainingInventory: { ...inventory } });
-    });
+    }
     return { waves, wins, targetCount, itemCount, usedItems, explored, earlyHealing,
       planningMode: earlyHealing.length ? 'sequential-healing' : 'sequential', model: waves[0].groups[0].model,
       remainingCards: cards.map(card => ({ ...card })), remainingInventory: { ...inventory } };
   }
-  let best = plan(), attempts = 0;
+  let best = yield* plan(), attempts = 0;
   const healingItem = itemCatalog.items.find(item => item.enabled && item.parameters.health_delta);
   const power = new Map(catalog.cards.map(card => [card.id, card.power_min]));
   // shortcut: only retry up to 12 earlier healing choices; broader resource backtracking needs action-level search.
-  while (healingItem && attempts < 12 && best.wins < best.targetCount) {
+  while (!control.stopped && healingItem && attempts < 12 && best.wins < best.targetCount) {
     const failedWave = best.waves.findLastIndex(wave => wave.wins < wave.targetCount);
     if (failedWave < 1) break;
     const lowHealth = new Set(best.waves[failedWave - 1].remainingCards.filter(card => card.health <= 1).map(card => card.cardId));
@@ -387,12 +501,12 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
     candidates.sort((a, b) => b.waveIndex - a.waveIndex || power.get(b.cardId) - power.get(a.cardId) || b.index - a.index);
     let improved = false;
     for (const candidate of candidates) {
-      if (attempts >= 12) break;
+      if (control.stopped || attempts >= 12) break;
       const prefix = flat.slice(0, candidate.index + 1).map(group => ({ ...group, formation: group.formation.map(unit => unit ? { ...unit } : null) }));
       const group = prefix[candidate.index];
       group.formation[candidate.position].specialId = healingItem.id;
       group.earlyHealingPositions = [...(group.earlyHealingPositions ?? []), candidate.position];
-      const alternative = plan(prefix, ++attempts);
+      const alternative = yield* plan(prefix, ++attempts);
       if (alternative.wins > best.wins) { best = alternative; improved = true; break; }
     }
     if (!improved) break;
@@ -400,7 +514,7 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
   let groupRepairRetries = 0;
   const groupRepairs = [], tried = new Set();
   // shortcut: 最多4次为失败后组预留单位；此前波次固定，不枚举所有组间配队或跨波用卡。
-  while (groupRepairRetries < 4 && best.wins < best.targetCount) {
+  while (!control.stopped && groupRepairRetries < 4 && best.wins < best.targetCount) {
     const flat = best.waves.flatMap(wave => wave.groups);
     let waveOffset = 0;
     const candidates = best.waves.flatMap((wave, waveIndex) => {
@@ -411,9 +525,9 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
     });
     let improved = false;
     for (const candidate of candidates) {
-      if (groupRepairRetries >= 4) break;
+      if (control.stopped || groupRepairRetries >= 4) break;
       tried.add(`${candidate.waveIndex}:${candidate.groupIndex + 1}`);
-      const alternative = plan(flat.slice(0, candidate.offset), 0, { ...candidate, attempt: ++groupRepairRetries });
+      const alternative = yield* plan(flat.slice(0, candidate.offset), 0, { ...candidate, attempt: ++groupRepairRetries });
       if (alternative.wins > best.wins) {
         best = alternative;
         groupRepairs.push({ wave: candidate.waveIndex + 1, group: candidate.groupIndex + 1 });
@@ -424,5 +538,5 @@ export function solveAction(input, catalog, itemCatalog, options = {}) {
     if (!improved) break;
   }
   return { ...best, planningMode: groupRepairs.length ? 'sequential-group-repair' : best.planningMode,
-    groupRepairs, groupRepairRetries, explored: workExplored, healingRetries: attempts };
+    groupRepairs, groupRepairRetries, explored: workExplored, healingRetries: attempts, searchCacheHits };
 }

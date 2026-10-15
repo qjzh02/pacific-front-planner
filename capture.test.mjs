@@ -135,6 +135,95 @@ test('禁用类型支持多个已知舰种，带入限制忽略，未知或缺�
   });
 });
 
+test('区域增益效果减100%导入为增益失效，带入8%还原且全域忽略', async () => {
+  await withSample('./html/关键区域-增益效果-100%25.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [151, 126, 153, 120]);
+    assert.equal(snapshot.source.ignoredEnemyPowerIncrease, 0.08);
+    assert.equal(snapshot.source.enemyPowerIncreases, undefined);
+    assert.equal(snapshot.condition.buffsDisabled, true);
+    assert.equal(snapshot.condition.debuffsDisabled, false);
+    assert.equal(snapshot.condition.buffsReduced, false);
+    assert.equal(snapshot.condition.debuffsReduced, false);
+    assert.deepEqual(snapshot.condition.global, { firepower: 0, survivability: 0, mobility: 0 });
+    const ignored = await page.evaluate(() => {
+      const header = [...sample.querySelectorAll('[class*="_subheader_"]')].find(node => node.textContent.trim() === '区域');
+      return ['带入', '指定', '全域'].map(label => {
+        header.textContent = label;
+        return PacificFrontCapture.readSnapshot(sample).condition.buffsDisabled;
+      });
+    });
+    assert.deepEqual(ignored, [false, false, false]);
+  });
+});
+
+test('区域减益50%样本导入为减益削弱，保留敌军并忽略全域条件', async () => {
+  await withSample('./html/关键区域-减益--50%25.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [177, 186, 154, 171]);
+    assert.equal(snapshot.condition.debuffsReduced, true);
+    assert.equal(snapshot.condition.buffsReduced, false);
+    assert.equal(snapshot.condition.buffsDisabled, false);
+    assert.equal(snapshot.condition.debuffsDisabled, false);
+    assert.deepEqual(snapshot.condition.global, { firepower: 0, survivability: 0, mobility: 0 });
+  });
+});
+
+test('增益减益50%与100%统一映射，支持混合并忽略带入指定全域', async () => {
+  await withSample('./html/关键区域-减益--50%25.txt', async page => {
+    const results = await page.evaluate(() => {
+      const header = [...sample.querySelectorAll('[class*="_subheader_"]')].find(node => node.textContent.trim() === '区域');
+      const row = header.nextElementSibling.querySelector('[class*="_statRow_"]');
+      const label = row.querySelector('[class*="_statLabel_"]'), rate = row.querySelector('[class*="_pctValue_"]');
+      const cases = [], ignored = [], mixed = [];
+      for (const [name, percentage] of [['增益效果', '-50%'], ['增益效果', '-100%'], ['减益效果', '−50%'], ['减益效果', '-100%']]) {
+        label.textContent = name; rate.textContent = percentage; header.textContent = '区域';
+        cases.push(PacificFrontCapture.readSnapshot(sample).condition);
+        for (const section of ['带入', '指定', '全域']) {
+          header.textContent = section;
+          ignored.push(PacificFrontCapture.readSnapshot(sample).condition);
+        }
+      }
+      header.textContent = '区域'; label.textContent = '增益效果';
+      const second = row.cloneNode(true); second.querySelector('[class*="_statLabel_"]').textContent = '减益效果'; row.parentElement.append(second);
+      for (const buffRate of ['-50%', '-100%']) for (const debuffRate of ['-50%', '-100%']) {
+        rate.textContent = buffRate; second.querySelector('[class*="_pctValue_"]').textContent = debuffRate;
+        mixed.push(PacificFrontCapture.readSnapshot(sample).condition);
+      }
+      return { cases, ignored, mixed };
+    });
+    const flags = ['buffsReduced', 'buffsDisabled', 'debuffsReduced', 'debuffsDisabled'];
+    const activeFlags = condition => flags.filter(flag => condition[flag]);
+    assert.deepEqual(results.cases.map(activeFlags), flags.map(flag => [flag]));
+    assert.ok(results.ignored.every(condition => activeFlags(condition).length === 0));
+    assert.deepEqual(results.mixed.map(activeFlags), [
+      ['buffsReduced', 'debuffsReduced'], ['buffsReduced', 'debuffsDisabled'],
+      ['buffsDisabled', 'debuffsReduced'], ['buffsDisabled', 'debuffsDisabled'],
+    ]);
+    assert.ok([...results.cases, ...results.mixed].every(condition => Object.values(condition.global).every(rate => rate === 0)));
+  });
+});
+
+test('区域增益效果拒绝缺失、重复、其他比例和未知内容', async () => {
+  await withSample('./html/关键区域-增益效果-100%25.txt', async page => {
+    const errors = await page.evaluate(() => {
+      const header = [...sample.querySelectorAll('[class*="_subheader_"]')].find(node => node.textContent.trim() === '区域');
+      const row = header.nextElementSibling.querySelector('[class*="_statRow_"]');
+      const pct = row.querySelector('[class*="_pctValue_"]');
+      const original = pct.innerHTML;
+      const errors = [], run = () => { try { PacificFrontCapture.readSnapshot(sample); } catch (error) { errors.push(error.message); } };
+      for (const value of ['-25%', '-99%', '-101%', '+100%']) { pct.textContent = value; run(); }
+      pct.innerHTML = original;
+      const duplicate = row.cloneNode(true); row.parentElement.append(duplicate); run(); duplicate.remove();
+      const extra = document.createElement('span'); extra.textContent = '未知条件'; row.append(extra); run(); extra.remove();
+      pct.remove(); run();
+      return errors;
+    });
+    assert.equal(errors.length, 7);
+    errors.forEach(message => assert.match(message, /无法.*识别.*区域/));
+  });
+});
+
 test('区域敌方战力提升直接使用已提升数值，不重复放大', async () => {
   await withSample('./html/关键区域5.txt', async page => {
     const snapshot = await page.evaluate(() => {
@@ -199,6 +288,83 @@ test('岸防炮敌军不受驱逐舰区域或带入加成影响，真正未知�
   });
 });
 
+test('岸防炮战力提升按卡面匹配，保留区域显示值且支持带入还原', async () => {
+  await withSample('./html/关键区域-存在未知战力提升图标-岸防炮.txt', async page => {
+    const regional = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(regional.enemies.map(enemy => enemy.power), [177, 187, 204, 201]);
+    assert.deepEqual(regional.enemies.map(enemy => enemy.powerIncrease), [0.16, 0.16, 0.16, 0]);
+    assert.deepEqual(regional.source.enemyPowerIncreases, [{ type: 'coastal_artillery', rate: 0.16 }]);
+    assert.equal(regional.condition.allowedTypes, null);
+    const carried = await page.evaluate(() => {
+      sample.querySelector('[class*="_subheader_"]').textContent = '带入';
+      return PacificFrontCapture.readSnapshot(sample);
+    });
+    assert.deepEqual(carried.enemies.map(enemy => enemy.power), [153, 161, 176, 201]);
+    assert.deepEqual(carried.source.ignoredEnemyPowerIncreases, [{ type: 'coastal_artillery', rate: 0.16 }]);
+    assert.equal(carried.source.enemyPowerIncreases, undefined);
+  });
+});
+
+test('两层带入按8%加16%还原，覆盖七组用户驱逐舰实测', async () => {
+  await withSample('./html/关键区域-多项带入敌方提升叠加.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [131, 154, 146, 137]);
+    assert.equal(snapshot.source.ignoredEnemyPowerIncrease, 0.08);
+    assert.deepEqual(snapshot.source.ignoredEnemyPowerIncreases, [{ type: 'destroyer', rate: 0.16 }]);
+    assert.equal(snapshot.condition.buffsDisabled, false); // 此样本增益失效也在带入栏目
+    assert.equal(snapshot.source.enemyPowerIncreases, undefined);
+    for (const [base, displayed] of [[137, 170], [177, 219], [207, 257], [161, 200], [145, 180], [164, 203], [139, 172]]) {
+      assert.equal(Math.round(base * 1.24), displayed);
+      const restored = await page.evaluate(displayed => {
+        sample.querySelectorAll('[class*="_enemies_"] [class*="_powerValue_"]')[3].textContent = String(displayed);
+        return PacificFrontCapture.readSnapshot(sample);
+      }, displayed);
+      assert.equal(restored.enemies[3].power, base);
+    }
+  });
+});
+
+test('带入与区域按原战力加算，只去掉带入并保留潜艇区域16%', async () => {
+  await withSample('./html/关键区域-既有带入又有区域提升叠加.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [145, 164, 161, 153]);
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.powerIncrease), [0, 0, 0.16, 0]);
+    assert.equal(snapshot.source.ignoredEnemyPowerIncrease, 0.08);
+    assert.deepEqual(snapshot.source.ignoredEnemyPowerIncreases, [{ type: 'destroyer', rate: 0.16 }]);
+    assert.deepEqual(snapshot.source.enemyPowerIncreases, [{ type: 'submarine', rate: 0.16 }]);
+    assert.equal(Math.round(snapshot.enemies[2].power / 1.16), 139);
+    assert.equal(Math.round(139 * 1.24), 172);
+    await page.evaluate(snapshot => PacificFrontCapture.validateSnapshot(JSON.parse(JSON.stringify(snapshot))), snapshot);
+  });
+});
+
+test('两层增益仍拒绝同舰种三层、未核对比例、无法还原和缺少加成标记', async () => {
+  await withSample('./html/关键区域-既有带入又有区域提升叠加.txt', async page => {
+    const errors = await page.evaluate(() => {
+      const headers = [...sample.querySelectorAll('[class*="_subheader_"]')];
+      const carried = headers.find(node => node.textContent.trim() === '带入').nextElementSibling;
+      const regional = headers.find(node => node.textContent.trim() === '区域').nextElementSibling;
+      const typedRow = carried.querySelector('[class*="_statRow_"]');
+      const icon = typedRow.querySelector('img'), label = typedRow.querySelector('[class*="_statLabel_"]');
+      const src = icon.src, name = label.textContent;
+      const errors = [], run = () => { try { PacificFrontCapture.readSnapshot(sample); } catch (error) { errors.push(error.message); } };
+      icon.src = '/assets/icon_submarine_standard-test.webp'; label.textContent = '潜艇'; run(); icon.src = src; label.textContent = name;
+      const rate = regional.querySelector('[class*="_pctValue_"]'), originalRate = rate.innerHTML;
+      rate.textContent = '+12%'; run(); rate.innerHTML = originalRate;
+      const power = sample.querySelectorAll('[class*="_enemies_"] [class*="_powerValue_"]')[2];
+      const originalPower = power.textContent, classes = power.className;
+      power.textContent = '3'; run(); power.textContent = originalPower;
+      power.className = classes.replace('_buffed_', '_normal_'); run();
+      return errors;
+    });
+    assert.equal(errors.length, 4);
+    assert.match(errors[0], /三层|叠加/);
+    assert.match(errors[1], /未核对/);
+    assert.match(errors[2], /无法还原/);
+    assert.match(errors[3], /加成标记/);
+  });
+});
+
 test('带入舰种16%只还原受影响敌军，覆盖两组已核对的原战力', async () => {
   for (const [file, type, expected] of [
     ['巡洋舰', 'cruiser', [156, 155, 135, 151]],
@@ -255,7 +421,7 @@ test('舰种提升支持多个已知类型，拒绝重复、未知、不一致�
       second.querySelector('img').src = row.querySelector('img').src;
       second.querySelector('[class*="_statLabel_"]').textContent = '巡洋舰'; run();
       second.remove();
-      icon.src = 'https://example.invalid/icon_submarine_standard-test.webp'; run();
+      icon.src = 'https://example.invalid/icon_unknown_standard-test.webp'; run();
       icon.src = original; label.textContent = '驱逐舰'; run(); label.textContent = '巡洋舰';
       const pct = row.querySelector('[class*="_pctValue_"]');
       pct.textContent = '-16%'; run(); pct.textContent = '+16%';
@@ -287,7 +453,7 @@ test('带入舰种还原拒绝未知敌军类型、缺失加成标记、不一�
       const icon = board.querySelector('[class*="_cardTypeIcon_"]'), power = board.querySelector('[class*="_powerValue_"]');
       const src = icon.src, classes = power.className, value = power.textContent;
       const errors = [], run = () => { try { PacificFrontCapture.readSnapshot(sample); } catch (error) { errors.push(error.message); } };
-      icon.src = 'https://example.invalid/icon_submarine_standard-test.webp'; run(); icon.src = src;
+      icon.src = 'https://example.invalid/icon_unknown_standard-test.webp'; run(); icon.src = src;
       power.className = classes.replace('_buffed_', '_normal_'); run(); power.className = classes;
       power.textContent = '4'; run(); power.textContent = value;
       const regionHeader = header.cloneNode(true); regionHeader.textContent = '区域';
@@ -466,6 +632,296 @@ async function withPlanner(run) {
 
 const savedInput = page => page.evaluate(() => JSON.parse(localStorage.getItem('pacific-front-planner-v1')));
 const pairedScript = async page => `globalThis.PacificFrontCaptureToken = ${JSON.stringify(await page.evaluate(async () => (await (await fetch('/capture/config')).json()).token))};\n${script}`;
+
+test('采集状态按空闲连接、后台和抓取中降频，可见时立即刷新', async () => {
+  await withPlanner(async page => {
+    let connected = false, polls = 0;
+    await page.route('**/capture/status', route => { polls++; return route.fulfill({ json: { connected, clientId: connected ? 'test-id' : null, result: null } }); });
+    await page.route('**/capture/request', route => route.fulfill({ json: { requestId: route.request().postDataJSON().requestId } }));
+    await page.addInitScript(() => {
+      window.pollDelays = []; window.testHidden = false;
+      Object.defineProperty(document, 'hidden', { get: () => window.testHidden });
+      const timeout = window.setTimeout;
+      window.setTimeout = (callback, delay, ...args) => { window.pollDelays.push(delay); return timeout(callback, delay, ...args); };
+    });
+    await page.reload();
+    await page.waitForFunction(() => window.pollDelays.includes(5000));
+    const idlePolls = polls;
+    await page.evaluate(() => { window.pollDelays = []; window.testHidden = true; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => window.pollDelays.includes(20000));
+    assert.ok(polls > idlePolls);
+    connected = true;
+    await page.evaluate(() => { window.pollDelays = []; window.testHidden = false; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => window.pollDelays.includes(2000));
+    assert.equal(await page.locator('#capture-current').isEnabled(), true);
+    await page.evaluate(() => { window.pollDelays = []; });
+    await page.locator('#capture-current').click();
+    await page.waitForFunction(() => window.pollDelays.includes(250));
+    await page.evaluate(() => { window.pollDelays = []; document.querySelector('#planner').dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.pollDelays.includes(2000));
+    assert.match(await page.locator('#capture-feedback').textContent(), /输入已改变/);
+  });
+});
+
+async function prepareHeavyPlanner(page) {
+  const cards = JSON.parse(await readFile(new URL('./data/cards.json', import.meta.url), 'utf8')).cards;
+  await page.addInitScript(() => {
+    window.testHidden = false;
+    Object.defineProperty(document, 'hidden', { get: () => window.testHidden });
+  });
+  await page.evaluate(cards => {
+    const input = JSON.parse(localStorage.getItem('pacific-front-planner-v1'));
+    input.waves = Array.from({ length: 6 }, () => ({ enemies: Array.from({ length: 20 }, () => ({ active: true, power: 999999, rawPower: '999999', weaknesses: [] })) }));
+    input.cards = cards.map(card => ({ cardId: card.id, health: 3 }));
+    input.computeBudget = 0; input.pauseBackground = true;
+    localStorage.setItem('pacific-front-planner-v1', JSON.stringify(input));
+  }, cards);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll('[data-enemy]').length === 120);
+  await page.locator('#planner').dispatchEvent('input');
+}
+
+test('计算手动暂停、后台暂停、恢复、取消和修改输入均保留正确状态', async () => {
+  await withPlanner(async page => {
+    await prepareHeavyPlanner(page);
+    assert.equal(await page.locator('#compute-budget').inputValue(), '0');
+    assert.equal(await page.locator('#pause-background').isChecked(), true);
+    const before = await savedInput(page);
+    await page.locator('#calculate').click();
+    await page.locator('#pause').click();
+    await page.waitForFunction(() => document.querySelector('#result-panel').classList.contains('compute-paused'));
+    await page.evaluate(() => { window.testHidden = true; document.dispatchEvent(new Event('visibilitychange')); window.testHidden = false; document.dispatchEvent(new Event('visibilitychange')); });
+    assert.equal(await page.locator('#pause').textContent(), '继续计算');
+    assert.equal(await page.locator('#result-panel').evaluate(node => node.classList.contains('compute-paused')), true);
+    await page.locator('#pause').click();
+    await page.waitForFunction(() => document.querySelector('#budget-text').textContent.startsWith('已计算'));
+    await page.evaluate(() => { window.testHidden = true; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => document.querySelector('#result-panel').classList.contains('compute-paused'));
+    assert.match(await page.locator('#progress-text').textContent(), /后台/);
+    const pausedBudget = await page.locator('#budget-text').textContent();
+    await page.waitForTimeout(150); // A paused Worker must not accrue execution time.
+    assert.equal(await page.locator('#budget-text').textContent(), pausedBudget);
+    await page.evaluate(() => { window.testHidden = false; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => !document.querySelector('#result-panel').classList.contains('compute-paused'));
+    await page.locator('#cancel').click();
+    assert.deepEqual(await savedInput(page), before);
+    assert.equal(await page.locator('#calculate').isEnabled(), true);
+    assert.equal(await page.locator('#pause').isVisible(), false);
+    await page.locator('#calculate').click(); await page.locator('#pause').click();
+    await page.waitForFunction(() => document.querySelector('#result-panel').classList.contains('compute-paused'));
+    await page.locator('[aria-label="第1波敌军1总战力"]').fill('123');
+    assert.equal(await page.locator('#calculate').isEnabled(), true);
+    assert.match(await page.locator('#result-panel').textContent(), /输入已改变/);
+    assert.deepEqual((await savedInput(page)).inventory, before.inventory);
+  });
+});
+
+test('Worker预算结束显示未完成标记，复制方案保留警示并保存预算设置', async () => {
+  await withPlanner(async page => {
+    await prepareHeavyPlanner(page);
+    // Only the test Worker's clock is accelerated; production budget values stay 30/60 seconds.
+    const worker = await readFile(new URL('./worker.js', import.meta.url), 'utf8');
+    await page.route('**/worker.js', route => route.fulfill({ contentType: 'text/javascript', body: `let testTime = 0; Object.defineProperty(performance, 'now', { value: () => testTime += 15000 });\n${worker}` }));
+    await page.locator('.model-settings > summary').click();
+    await page.locator('#compute-budget').selectOption('30');
+    const before = await savedInput(page);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => document.querySelectorAll('.group-result').length === 30);
+    assert.match(await page.locator('#result-panel').textContent(), /已达到计算预算/);
+    assert.match(await page.locator('.group-result').first().textContent(), /搜索未完成/);
+    assert.match(await page.locator('.group-result').last().textContent(), /尚未搜索/);
+    await page.evaluate(() => { window.copiedPlan = ''; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedPlan = text; } } }); });
+    await page.locator('#copy-result').click();
+    assert.match(await page.evaluate(() => window.copiedPlan), /已达到计算预算/);
+    assert.match(await page.evaluate(() => window.copiedPlan), /尚未搜索/);
+    assert.deepEqual(await savedInput(page), before);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('[data-card]').length === 30);
+    assert.equal(await page.locator('#compute-budget').inputValue(), '30');
+  });
+});
+
+test('Worker复用相同输入的搜索结果，页面说明准确且不修改保存输入', async () => {
+  await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => document.querySelectorAll('.group-result').length === 3);
+    const footers = await page.locator('.group-result .result-footer').allTextContents();
+    assert.match(footers[0], /检查 .* 个搜索分支/);
+    assert.match(footers[1], /复用相同输入的搜索结果/);
+    assert.match(footers[2], /复用相同输入的搜索结果/);
+    assert.deepEqual(await savedInput(page), before);
+    assert.equal(await page.locator('#calculate').isEnabled(), true);
+    assert.equal(await page.locator('#cancel').isVisible(), false);
+  });
+});
+
+test('四种增益减益条件导入、Worker显示、保存和撤销保持一致', async () => {
+  for (const [label, percent, flag, display] of [
+    ['增益效果', '-50%', 'buffsReduced', '增益效果减少50%'],
+    ['增益效果', '-100%', 'buffsDisabled', '增益失效'],
+    ['减益效果', '-50%', 'debuffsReduced', '减益效果减少50%'],
+    ['减益效果', '-100%', 'debuffsDisabled', '减益失效'],
+  ]) await withPlanner(async page => {
+    const before = await savedInput(page);
+    const html = await readFile(new URL('./html/关键区域-减益--50%25.txt', import.meta.url), 'utf8');
+    const source = await page.evaluate(({ html, label, percent }) => {
+      const template = document.createElement('template'); template.innerHTML = html;
+      const header = [...template.content.querySelectorAll('[class*="_subheader_"]')].find(node => node.textContent.trim() === '区域');
+      const row = header.nextElementSibling.querySelector('[class*="_statRow_"]');
+      row.querySelector('[class*="_statLabel_"]').textContent = label;
+      row.querySelector('[class*="_pctValue_"]').textContent = percent;
+      return template.innerHTML;
+    }, { html, label, percent });
+    await page.locator('#capture-target').selectOption('0:1');
+    await page.locator('#capture-file').setInputFiles({ name: 'effect-condition.html', mimeType: 'text/html', buffer: Buffer.from(source) });
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page), condition = imported.waves[0].groupConditions[1];
+    for (const key of ['buffsDisabled', 'debuffsDisabled', 'buffsReduced', 'debuffsReduced']) assert.equal(condition[key], key === flag);
+    assert.deepEqual(condition.global, { firepower: 0, survivability: 0, mobility: 0 });
+    assert.equal(await page.locator(`[aria-label="第1波第2组${display}"]`).isChecked(), true);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.power), [177, 186, 154, 171]);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4), before.waves[0].enemies.slice(0, 4));
+    assert.deepEqual(imported.waves[0].groupConditions[0], before.waves[0].groupConditions[0]);
+    assert.deepEqual(imported.waves[1], before.waves[1]);
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => Boolean(document.querySelector('#copy-result')));
+    assert.ok((await page.locator('#result-panel .group-result').nth(1).textContent()).includes(`本组战场条件：${display}`));
+    assert.deepEqual(await savedInput(page), imported);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.deepEqual((await savedInput(page)).waves, imported.waves);
+    assert.equal(await page.locator(`[aria-label="第1波第2组${display}"]`).isChecked(), true);
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
+
+test('修改后续波次人数及增删波次保留已有折叠状态和输入', async () => {
+  await withPlanner(async page => {
+    const opened = () => page.locator('#enemies .wave-input').evaluateAll(waves => waves.map(wave => wave.open));
+    assert.deepEqual(await opened(), [true, false]);
+    await page.locator('[aria-label="第1波敌军数量"]').selectOption('20');
+    const before = await savedInput(page);
+    await page.locator('[data-wave="0"] > summary').click();
+    await page.locator('[data-wave="1"] > summary').click();
+    assert.deepEqual(await opened(), [false, true]);
+    await page.locator('[aria-label="第2波敌军数量"]').selectOption('12');
+    assert.deepEqual(await opened(), [false, true]);
+    await page.locator('#add-wave').click();
+    assert.deepEqual(await opened(), [false, true, true]);
+    await page.locator('[data-wave="1"] > summary').click();
+    await page.locator('[aria-label="第3波敌军数量"]').selectOption('20');
+    assert.deepEqual(await opened(), [false, false, true]);
+    const changed = await savedInput(page);
+    assert.deepEqual(changed.waves[0], before.waves[0]);
+    assert.equal(changed.waves[1].enemies.length, 12);
+    assert.equal(changed.waves[2].enemies.length, 20);
+    assert.deepEqual(changed.cards, before.cards);
+    assert.deepEqual(changed.inventory, before.inventory);
+    await page.locator('[data-wave="2"] > summary').click();
+    assert.deepEqual(await opened(), [false, false, false]);
+    await page.locator('#add-wave').click();
+    assert.deepEqual(await opened(), [false, false, false, true]);
+    await page.locator('#remove-wave').click();
+    assert.deepEqual(await opened(), [false, false, false]);
+  });
+});
+
+test('岸防炮提升样本导入、中文来源、计算、保存和撤销正确', async () => {
+  await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#capture-target').selectOption('0:1');
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键区域-存在未知战力提升图标-岸防炮.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.power), [177, 187, 204, 201]);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.powerIncrease), [0.16, 0.16, 0.16, 0]);
+    assert.match(await page.locator('.capture-source').textContent(), /区域敌方岸防炮战力＋16%/);
+    assert.equal(await page.locator('[aria-label*="允许岸防炮"]').count(), 0);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4), before.waves[0].enemies.slice(0, 4));
+    assert.deepEqual(imported.waves[0].groupConditions[0], before.waves[0].groupConditions[0]);
+    assert.deepEqual(imported.waves[1], before.waves[1]);
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => Boolean(document.querySelector('#copy-result')));
+    assert.match(await page.locator('#result-panel').textContent(), /区域敌方岸防炮战力＋16%/);
+    assert.deepEqual(await savedInput(page), imported);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.match(await page.locator('.capture-source').textContent(), /区域敌方岸防炮战力＋16%/);
+    assert.deepEqual((await savedInput(page)).waves, imported.waves);
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
+
+test('两层增益样本导入、来源、Worker计算、保存和撤销保持一致', async () => {
+  for (const [file, powers, increases] of [
+    ['多项带入敌方提升叠加', [131, 154, 146, 137], [undefined, undefined, undefined, undefined]],
+    ['既有带入又有区域提升叠加', [145, 164, 161, 153], [0, 0, 0.16, 0]],
+  ]) await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#capture-target').selectOption('0:1');
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL(`./html/关键区域-${file}.txt`, import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.power), powers);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.powerIncrease), increases);
+    assert.match(await page.locator('.capture-source').textContent(), /带入.*驱逐舰.*16%.*(?:已还原|已去除).*带入.*8%.*(?:已还原|已去除)/);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4), before.waves[0].enemies.slice(0, 4));
+    assert.deepEqual(imported.waves[1], before.waves[1]);
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    assert.equal(await page.locator('[aria-label*="允许潜艇"]').count(), 0);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => Boolean(document.querySelector('#copy-result')));
+    if (file.startsWith('既有')) {
+      assert.match(await page.locator('.capture-source').textContent(), /区域.*潜艇.*16%/);
+      assert.match(await page.locator('.capture-source').textContent(), /已去除带入，保留区域增益/);
+      assert.match(await page.locator('#result-panel').textContent(), /敌方原战力139.*区域战力＋16%/);
+    }
+    assert.deepEqual(await savedInput(page), imported);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.deepEqual((await savedInput(page)).waves, imported.waves);
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
+
+test('增益失效样本导入目标组后保存、计算和撤销，保留其他组与资源', async () => {
+  await withPlanner(async page => {
+    await page.locator('[aria-label="第1波第2组增益失效"]').uncheck();
+    const before = await savedInput(page);
+    await page.locator('#capture-target').selectOption('0:1');
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键区域-增益效果-100%25.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.power), [151, 126, 153, 120]);
+    assert.equal(imported.waves[0].groupConditions[1].buffsDisabled, true);
+    assert.equal(imported.waves[0].groupConditions[1].captureSource.ignoredEnemyPowerIncrease, 0.08);
+    assert.equal(await page.locator('[aria-label="第1波第2组增益失效"]').isChecked(), true);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4), before.waves[0].enemies.slice(0, 4));
+    assert.deepEqual(imported.waves[0].groupConditions[0], before.waves[0].groupConditions[0]);
+    assert.deepEqual(imported.waves[1], before.waves[1]);
+    assert.deepEqual(imported.cards, before.cards);
+    assert.deepEqual(imported.inventory, before.inventory);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => Boolean(document.querySelector('#copy-result')));
+    assert.match(await page.locator('#result-panel').textContent(), /本组战场条件：增益失效/);
+    assert.deepEqual(await savedInput(page), imported);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.capture-source')));
+    assert.equal(await page.locator('[aria-label="第1波第2组增益失效"]').isChecked(), true);
+    assert.deepEqual((await savedInput(page)).waves, imported.waves);
+    await page.locator('#capture-undo').click();
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
+  });
+});
 
 test('岸防炮样本导入目标组后保存区域加成，刷新可撤销且保留资源', async () => {
   await withPlanner(async page => {

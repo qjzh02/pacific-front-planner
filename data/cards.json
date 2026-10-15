@@ -50,6 +50,15 @@
       "formula": "round(base_power * (1 + increase_rate - debuff_rate))"
     },
     "enemy_power_increase_other_debuff_combinations": "base_power * (1 + increase_rate - sum(debuff_rates))",
+    "enemy_power_increase_capture_stacking": {
+      "stacking": "additive",
+      "rounding": "nearest_integer",
+      "carried_global_rate": 0.08,
+      "typed_rate": 0.16,
+      "combined_rate": 0.24,
+      "restore_formula": "round(displayed_power / (1 + carried_rate + regional_rate))",
+      "retain_formula": "round(base_power * (1 + regional_rate))"
+    },
     "debuff_requires_matching_weakness": true,
     "health_stat_multipliers": {
       "3": 1.0,
@@ -79,6 +88,7 @@
       "battle_items_disabled_slots",
       "enemy_power_increase_with_single_debuff",
       "enemy_power_increase_other_debuff_combinations",
+      "enemy_power_increase_capture_stacking",
       "enemy_above_own_minimum"
     ],
     "user_confirmed_enemy_power_increase": {
@@ -115,6 +125,43 @@
       "source": "实测规则更正：敌方增益和各次减益均按原战力加算；其他取整仍待核对。",
       "formula": "base_power * (1 + increase_rate - sum(debuff_rates))",
       "rounding_confirmed": false
+    },
+    "user_confirmed_enemy_capture_stacking": {
+      "date": "2026-10-14",
+      "sources": [
+        "sources/enemy-capture-stacking.json"
+      ],
+      "carried_destroyer": {
+        "base": [
+          137,
+          177,
+          207,
+          161,
+          145,
+          164,
+          139
+        ],
+        "displayed": [
+          170,
+          219,
+          257,
+          200,
+          180,
+          203,
+          172
+        ],
+        "rates": [
+          0.08,
+          0.16
+        ]
+      },
+      "mixed_submarine": {
+        "base": 139,
+        "displayed": 172,
+        "carried_rate": 0.08,
+        "regional_rate": 0.16
+      },
+      "scope": "仅校准8%与16%加算及采集还原；三层同目标及减益取整不在本次确认范围"
     },
     "model_assumptions": {},
     "in_game_rules_read": [

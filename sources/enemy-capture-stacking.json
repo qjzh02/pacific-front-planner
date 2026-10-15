@@ -1,0 +1,36 @@
+{
+  "kind": "public_transcription",
+  "note": "匿名实测数值记录；原始页面不分发，html目录仅含人工回归样本。",
+  "date": "2026-10-14",
+  "carried_destroyer": {
+    "base": [
+      137,
+      177,
+      207,
+      161,
+      145,
+      164,
+      139
+    ],
+    "displayed": [
+      170,
+      219,
+      257,
+      200,
+      180,
+      203,
+      172
+    ],
+    "rates": [
+      0.08,
+      0.16
+    ]
+  },
+  "mixed_submarine": {
+    "base": 139,
+    "displayed": 172,
+    "carried_rate": 0.08,
+    "regional_rate": 0.16
+  },
+  "scope": "仅校准8%与16%加算及采集还原；三层同目标及减益取整不在本次确认范围"
+}
