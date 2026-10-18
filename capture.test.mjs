@@ -396,6 +396,82 @@ test('带入舰种16%只还原受影响敌军，覆盖两组已核对的原战�
   }
 });
 
+test('不同舰种分栏带入16%样本分别还原，不将两个栏目误判为重复', async () => {
+  await withSample('./html/关键据点-舰种提升重复.txt', async page => {
+    const snapshot = await page.evaluate(() => PacificFrontCapture.readSnapshot(sample));
+    assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), [190, 191, 188, 186]);
+    assert.deepEqual(snapshot.source.ignoredEnemyPowerIncreases, [{ type: 'destroyer', rate: 0.16 }, { type: 'battleship', rate: 0.16 }]);
+    assert.equal(snapshot.source.enemyPowerIncreases, undefined);
+    assert.equal(snapshot.source.ignoredEnemyPowerIncrease, undefined);
+    assert.deepEqual(snapshot.condition.global, { firepower: 0, survivability: 0, mobility: 0 });
+    assert.equal(snapshot.condition.allowedTypes, null);
+    await page.evaluate(snapshot => PacificFrontCapture.validateSnapshot(snapshot), snapshot);
+  });
+});
+
+test('全部支持舰种可单栏或分栏独立提升，带入多栏目仍按舰种去重', async () => {
+  await withSample('./html/关键据点-舰种提升重复.txt', async page => {
+    const results = await page.evaluate(() => {
+      const types = [['aircraft', '飞机', 'card_ship_plane-test.webp'], ['battleship', '战列舰', 'icon_battleship_standard-test.webp'],
+        ['cruiser', '巡洋舰', 'icon_cruiser_standard-test.webp'], ['destroyer', '驱逐舰', 'icon_destroyer_standard-test.webp'],
+        ['submarine', '潜艇', 'icon_submarine_standard-test.webp'], ['coastal_artillery', '岸防炮', 'card_ship_coastal_artillery-test.webp']];
+      const header = sample.querySelector('[class*="_subheader_"]'), body = header.nextElementSibling;
+      const template = body.querySelector('[class*="_section_"]').cloneNode(true);
+      const sections = types.map(([, name, file]) => {
+        const section = template.cloneNode(true);
+        section.querySelector('img').src = `/assets/${file}`;
+        section.querySelector('[class*="_statLabel_"]').textContent = name;
+        return section;
+      });
+      sample.querySelectorAll('[class*="_enemies_"] [class*="_powerValue_"]').forEach(power => power.classList.add('_buffed_test'));
+      const snapshots = [];
+      for (const category of ['带入', '区域']) for (const split of [false, true]) {
+        header.textContent = category;
+        if (split) body.replaceChildren(...sections.map(section => section.cloneNode(true)));
+        else {
+          const merged = sections[0].cloneNode(true);
+          merged.append(...sections.slice(1).map(section => section.querySelector('[class*="_statRow_"]').cloneNode(true)));
+          body.replaceChildren(merged);
+        }
+        snapshots.push({ category, split, snapshot: PacificFrontCapture.readSnapshot(sample) });
+      }
+      header.textContent = '带入';
+      body.replaceChildren(sections[0].cloneNode(true));
+      const extra = [];
+      sections.slice(1).forEach(section => {
+        const nextHeader = header.cloneNode(true), nextBody = body.cloneNode(false);
+        nextBody.append(section.cloneNode(true)); header.parentElement.append(nextHeader, nextBody);
+        extra.push(nextHeader, nextBody);
+      });
+      const separateHeaders = PacificFrontCapture.readSnapshot(sample);
+      extra.forEach(node => node.remove());
+      const errors = [], run = () => { try { PacificFrontCapture.readSnapshot(sample); } catch (error) { errors.push(error.message); } };
+      body.replaceChildren(...sections.map(section => section.cloneNode(true)));
+      body.append(sections[0].cloneNode(true)); run(); body.lastElementChild.remove();
+      body.lastElementChild.querySelector('img').src = '/assets/icon_unknown_standard-test.webp'; run();
+      body.lastElementChild.replaceWith(sections.at(-1).cloneNode(true));
+      body.lastElementChild.querySelector('[class*="_statLabel_"]').textContent = '驱逐舰'; run();
+      body.lastElementChild.replaceWith(sections.at(-1).cloneNode(true));
+      body.lastElementChild.querySelector('[class*="_pctValue_"]').textContent = '+12%'; run();
+      body.lastElementChild.replaceWith(sections.at(-1).cloneNode(true));
+      body.lastElementChild.append(document.createTextNode('未知条件')); run();
+      body.lastElementChild.replaceWith(sections.at(-1).cloneNode(true));
+      header.textContent = '区域'; body.append(sections[0].cloneNode(true)); run();
+      return { snapshots, separateHeaders, types: types.map(([type]) => type), errors };
+    });
+    const boosts = results.types.map(type => ({ type, rate: 0.16 }));
+    for (const { category, snapshot } of results.snapshots) {
+      assert.deepEqual(snapshot.source[category === '带入' ? 'ignoredEnemyPowerIncreases' : 'enemyPowerIncreases'], boosts);
+      assert.deepEqual(snapshot.enemies.map(enemy => enemy.power), category === '带入' ? [164, 191, 188, 160] : [190, 222, 218, 186]);
+      if (category === '区域') assert.deepEqual(snapshot.enemies.map(enemy => enemy.powerIncrease), [0.16, 0.16, 0.16, 0.16]);
+    }
+    assert.deepEqual(results.separateHeaders.source.ignoredEnemyPowerIncreases, boosts);
+    assert.deepEqual(results.errors.map(error => /重复|未知|不一致|未核对/.test(error)), [true, true, true, true, true, true]);
+    assert.match(results.errors[0], /舰种战力提升重复/);
+    assert.match(results.errors[5], /舰种战力提升重复/);
+  });
+});
+
 test('舰种提升支持多个已知类型，拒绝重复、未知、不一致及未核对带入比例', async () => {
   await withSample('./html/关键区域-巡洋舰战力提升.txt', async page => {
     const result = await page.evaluate(() => {
@@ -738,6 +814,34 @@ test('Worker预算结束显示未完成标记，复制方案保留警示并保�
     await page.reload();
     await page.waitForFunction(() => document.querySelectorAll('[data-card]').length === 30);
     assert.equal(await page.locator('#compute-budget').inputValue(), '30');
+  });
+});
+
+test('分栏多舰种带入导入、来源说明、计算、刷新和撤销保持一致', async () => {
+  await withPlanner(async page => {
+    const before = await savedInput(page);
+    await page.locator('#capture-target').selectOption('0:1');
+    await page.locator('#capture-file').setInputFiles(fileURLToPath(new URL('./html/关键据点-舰种提升重复.txt', import.meta.url)));
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已填入'));
+    const imported = await savedInput(page);
+    assert.deepEqual(imported.waves[0].enemies.slice(4).map(enemy => enemy.power), [190, 191, 188, 186]);
+    assert.deepEqual(imported.waves[0].groupConditions[1].captureSource.ignoredEnemyPowerIncreases,
+      [{ type: 'destroyer', rate: 0.16 }, { type: 'battleship', rate: 0.16 }]);
+    assert.match(await page.locator('#capture-feedback').textContent(), /驱逐舰/);
+    assert.match(await page.locator('#capture-feedback').textContent(), /战列舰/);
+    assert.deepEqual(imported.waves[0].enemies.slice(0, 4), before.waves[0].enemies.slice(0, 4));
+    assert.deepEqual(imported.waves[1], before.waves[1]);
+    assert.deepEqual(imported.cards, before.cards); assert.deepEqual(imported.inventory, before.inventory);
+    await page.locator('#calculate').click();
+    await page.waitForFunction(() => document.querySelectorAll('.group-result').length === 3);
+    assert.match(await page.locator('.group-result').nth(1).textContent(), /敌方最终战力/);
+    assert.deepEqual(await savedInput(page), imported);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('[data-card]').length === 30);
+    assert.deepEqual(await savedInput(page), imported);
+    await page.locator('#capture-undo').click();
+    await page.waitForFunction(() => document.querySelector('#capture-feedback').textContent.startsWith('已撤销'));
+    assert.deepEqual((await savedInput(page)).waves, before.waves);
   });
 });
 

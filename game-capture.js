@@ -66,7 +66,6 @@
       nodes(section, '_label_').some(label => /^敌方战力[：:]$/.test(text(label))));
     const typedBoosts = body => {
       const sections = typedSections(body), boosts = [], seen = new Set();
-      check(sections.length <= 1, '舰种战力提升栏目重复，未导入。');
       for (const section of sections) {
         const rows = nodes(section, '_statRow_');
         check(rows.length > 0, '舰种战力提升内容缺失，未导入。');

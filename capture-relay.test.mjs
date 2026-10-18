@@ -182,6 +182,26 @@ test('接口接受两层带入及带入8%与潜艇区域16%，拒绝三层重叠
   });
 });
 
+test('接口保留不同舰种的独立带入或区域提升，并拒绝同舰种重复', async () => {
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'multi-types' } });
+    const boosts = [{ type: 'destroyer', rate: 0.16 }, { type: 'battleship', rate: 0.16 }];
+    for (const [key, powers, rates] of [
+      ['ignoredEnemyPowerIncreases', [190, 191, 188, 186], null],
+      ['enemyPowerIncreases', [190, 222, 218, 186], [0, 0.16, 0.16, 0]],
+    ]) {
+      await call('request', { body: { requestId: key } });
+      const accepted = { ...snapshot, source: { action: '测试', stage: 1, keypoint: 11, [key]: boosts },
+        enemies: powers.map((power, i) => ({ active: true, power, weaknesses: [], ...(rates ? { powerIncrease: rates[i] } : {}) })) };
+      const duplicated = { ...accepted, source: { ...accepted.source, [key]: [...boosts, boosts[0]] } };
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'multi-types', requestId: key, snapshot: duplicated } })).status, 400);
+      assert.equal((await (await call('status')).json()).result, null);
+      assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'multi-types', requestId: key, snapshot: accepted } })).status, 200);
+      assert.deepEqual((await (await call('status')).json()).result.snapshot, accepted);
+    }
+  });
+});
+
 test('接口接受岸防炮提升来源并保持每个敌军的区域比例', async () => {
   await withRelay(async call => {
     await call('game', { game: true, body: { type: 'connect', clientId: 'client-coastal' } });

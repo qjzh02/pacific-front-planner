@@ -65,7 +65,7 @@ class PublicReleaseTests(unittest.TestCase):
 
     def test_capture_fixtures_have_only_artificial_markup(self):
         files = list((ROOT / "html").glob("*.txt")) + list((ROOT / "html").glob("*.html"))
-        self.assertEqual(len(files), 19)
+        self.assertEqual(len(files), 20)
         for path in files:
             content = path.read_text(encoding="utf-8")
             self.assertLess(len(content), 6000)
