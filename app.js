@@ -2,7 +2,7 @@ const $ = selector => document.querySelector(selector);
 const escape = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const STAT_NAMES = { firepower: '火力', survivability: '存活性', mobility: '机动性' };
 const TYPE_NAMES = { aircraft: '飞机', battleship: '战列舰', cruiser: '巡洋舰', destroyer: '驱逐舰' };
-const ENEMY_TYPE_NAMES = { ...TYPE_NAMES, submarine: '潜艇', coastal_artillery: '岸防炮' };
+const ENEMY_TYPE_NAMES = { ...TYPE_NAMES, submarine: '潜艇', coastal_artillery: '岸防炮', naval_mine: '水雷' };
 const ARROWS = { left: '←', right: '→', front_left: '↖', front: '↑', front_right: '↗' };
 const STORAGE_KEY = 'pacific-front-planner-v1';
 const CAPTURE_BACKUP_KEY = `${STORAGE_KEY}-capture-backup`;
@@ -103,10 +103,11 @@ function readInput(validate = false) {
   return { waves, cards, inventory,
     model: { stacking: 'additive', globalStacking: $('#global-stacking').value, rounding: $('#rounding').value, allowEqual: $('#allow-equal').checked, revive: $('#revive').checked },
     beamWidth: Number($('#beam-width').value), computeBudget: Number($('#compute-budget').value),
-    pauseBackground: $('#pause-background').checked };
+    pauseBackground: $('#pause-background').checked, captureAuto: $('#capture-auto').checked };
 }
 
 function restore(input) {
+  $('#capture-auto').checked = input.captureAuto !== false;
   const waves = input.waves ?? (input.enemies ? [{ enemies: input.enemies }] : null);
   if (waves?.length >= 1 && waves.length <= 6 && waves.every(wave => [4, 8, 12, 16, 20].includes(wave.enemies?.length))) {
     const legacy = waves.some(wave => !wave.groupConditions) && (input.global || input.globalInputs);
@@ -252,20 +253,21 @@ function refreshCaptureTargets() {
   });
   select.replaceChildren(...options);
   if (options.some(option => option.value === selected)) select.value = selected;
-  select.disabled = Boolean(pendingCapture);
+  select.disabled = Boolean(pendingCapture) || $('#capture-auto').checked;
   document.querySelectorAll('[data-group]').forEach(group => group.classList.toggle('capture-target-group',
     `${group.closest('[data-wave]').dataset.wave}:${group.dataset.group}` === select.value));
 }
 
 function updateCaptureConnection() {
   const connected = captureConnected;
-  const key = `${connected}:${Boolean(pendingCapture)}:${Boolean(captureUndo)}`;
+  const key = `${connected}:${Boolean(pendingCapture)}:${Boolean(captureUndo)}:${captureUndo?.kind}:${$('#capture-auto').checked}`;
   if (key === captureConnectionKey) return connected;
   captureConnectionKey = key;
   $('#capture-current').disabled = !connected || Boolean(pendingCapture);
   $('#capture-file-button').disabled = Boolean(pendingCapture);
   $('#capture-undo').disabled = !captureUndo || Boolean(pendingCapture);
-  $('#capture-target').disabled = Boolean(pendingCapture);
+  $('#capture-target').disabled = Boolean(pendingCapture) || $('#capture-auto').checked;
+  $('#capture-undo').textContent = captureUndo?.kind === 'reset' ? '撤销重置' : '撤销上次抓取';
   $('#capture-connection').textContent = connected ? '游戏页面已连接 · 请先手动打开要抓取的据点' : '游戏页面未连接 · 首次连接方法见下方说明';
   return connected;
 }
@@ -281,13 +283,13 @@ function cancelPendingCapture(message) {
 function beginCapture(kind) {
   cancelPendingCapture();
   const [waveIndex, groupIndex] = $('#capture-target').value.split(':').map(Number);
-  const request = { kind, waveIndex, groupIndex, requestId: crypto.randomUUID() };
+  const request = { kind, waveIndex, groupIndex, auto: $('#capture-auto').checked, requestId: crypto.randomUUID() };
   request.timer = setTimeout(() => {
     if (pendingCapture === request) cancelPendingCapture('抓取超时，原输入已保留。请检查游戏脚本连接，或导入HTML/TXT。');
   }, 8000);
   pendingCapture = request;
   updateCaptureConnection();
-  captureFeedback(`正在读取，目标为第${waveIndex + 1}波第${groupIndex + 1}组……`);
+  captureFeedback(request.auto ? '正在读取，将按页面阶段和据点编号自动填入……' : `正在读取，目标为第${waveIndex + 1}波第${groupIndex + 1}组……`);
   return request;
 }
 
@@ -300,31 +302,63 @@ function captureGroup(input, waveIndex, groupIndex) {
 function applyCapture(snapshot, request) {
   if (pendingCapture !== request) return;
   const before = readInput();
-  const merged = capture.mergeSnapshot(before, request.waveIndex, request.groupIndex, snapshot);
-  const previous = captureGroup(before, request.waveIndex, request.groupIndex);
+  const result = request.auto ? capture.mergeAutoSnapshot(before, snapshot) : {
+    input: capture.mergeSnapshot(before, request.waveIndex, request.groupIndex, snapshot), waveIndex: request.waveIndex, groupIndex: request.groupIndex };
+  const { waveIndex, groupIndex } = result;
+  const previous = before.waves[waveIndex]?.enemies.length >= (groupIndex + 1) * 4 ? captureGroup(before, waveIndex, groupIndex) : null;
   cancelPendingCapture();
   stop();
-  restore(merged);
-  captureUndo = { waveIndex: request.waveIndex, groupIndex: request.groupIndex, previous,
-    applied: captureGroup(readInput(), request.waveIndex, request.groupIndex) };
-  // 先保存回退记录，再由原有输入流程保存新数据。
-  try { localStorage.setItem(CAPTURE_BACKUP_KEY, JSON.stringify(captureUndo)); } catch { /* 本次仍可用内存记录撤销。 */ }
+  restore(result.input);
+  const appliedInput = readInput();
+  saveCaptureUndo({ waveIndex, groupIndex, previous, applied: captureGroup(appliedInput, waveIndex, groupIndex),
+    ...(request.auto ? { structure: { beforeWaves: before.waves, appliedWaves: appliedInput.waves } } : {}) });
   $('#planner').dispatchEvent(new Event('input'));
-  $(`[data-wave="${request.waveIndex}"]`).open = true;
+  $(`[data-wave="${waveIndex}"]`).open = true;
   const select = $('#capture-target');
+  select.value = `${waveIndex}:${groupIndex}`;
   const index = select.selectedIndex;
-  if (index + 1 < select.options.length) select.selectedIndex = index + 1;
+  if (!request.auto && index + 1 < select.options.length) select.selectedIndex = index + 1;
   refreshCaptureTargets();
   updateCaptureConnection();
-  captureFeedback(`已填入第${request.waveIndex + 1}波第${request.groupIndex + 1}组：${snapshot.enemies.map(enemy => enemy.power).join(' / ')}。来源：${captureSourceText(snapshot.source)}。${index + 1 < select.options.length ? '已选中下一组。' : '已到最后一组。'}`);
+  captureFeedback(`已填入第${waveIndex + 1}波第${groupIndex + 1}组：${snapshot.enemies.map(enemy => enemy.power).join(' / ')}。来源：${captureSourceText(snapshot.source)}。${request.auto ? '已按来源自动定位，可继续打开下一个据点。' : index + 1 < select.options.length ? '已选中下一组。' : '已到最后一组。'}`);
+}
+
+function saveCaptureUndo(value) {
+  captureUndo = value;
+  try {
+    if (value) localStorage.setItem(CAPTURE_BACKUP_KEY, JSON.stringify(value));
+    else localStorage.removeItem(CAPTURE_BACKUP_KEY);
+  } catch { /* 本次仍可使用内存中的回退记录。 */ }
+}
+
+function undoCaptureExpansion(input, structure, waveIndex) {
+  const { beforeWaves, appliedWaves } = structure;
+  const unchanged = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const message = '自动新增的阶段或组已有其他修改，未撤销，以免覆盖你的新输入。';
+  if (appliedWaves.length > beforeWaves.length) {
+    if (input.waves.length !== appliedWaves.length || !unchanged(input.waves.slice(beforeWaves.length), appliedWaves.slice(beforeWaves.length))) throw new Error(message);
+  }
+  const previousWave = beforeWaves[waveIndex], appliedWave = appliedWaves[waveIndex], wave = input.waves[waveIndex];
+  if (previousWave && previousWave.enemies.length < appliedWave.enemies.length) {
+    const count = previousWave.enemies.length;
+    if (wave.enemies.length !== appliedWave.enemies.length || !unchanged(wave.enemies.slice(count), appliedWave.enemies.slice(count)) ||
+      !unchanged(wave.groupConditions.slice(count / 4), appliedWave.groupConditions.slice(count / 4))) throw new Error(message);
+    wave.enemies.length = count; wave.groupConditions.length = count / 4;
+  }
+  if (appliedWaves.length > beforeWaves.length) input.waves.length = beforeWaves.length;
 }
 
 function setupCapture() {
   if (!capture) { captureFeedback('采集脚本未加载，请重新启动服务并刷新页面。', true); return; }
   try {
     const saved = JSON.parse(localStorage.getItem(CAPTURE_BACKUP_KEY));
-    if (Number.isInteger(saved?.waveIndex) && saved.waveIndex >= 0 && Number.isInteger(saved.groupIndex) && saved.groupIndex >= 0 &&
-      saved.previous?.enemies?.length === 4 && saved.previous.condition && saved.applied?.enemies?.length === 4 && saved.applied.condition) captureUndo = saved;
+    const validWaves = waves => Array.isArray(waves) && waves.length >= 1 && waves.length <= 6 &&
+      waves.every(wave => [4, 8, 12, 16, 20].includes(wave.enemies?.length) && wave.groupConditions?.length === wave.enemies.length / 4);
+    if (saved?.kind === 'reset' && validWaves(saved.previousWaves) && validWaves(saved.appliedWaves)) captureUndo = saved;
+    else if (Number.isInteger(saved?.waveIndex) && saved.waveIndex >= 0 && saved.waveIndex < 6 && Number.isInteger(saved.groupIndex) && saved.groupIndex >= 0 && saved.groupIndex < 5 &&
+      (saved.previous?.enemies?.length === 4 && saved.previous.condition || saved.previous === null && saved.structure) &&
+      (!saved.structure || validWaves(saved.structure.beforeWaves) && validWaves(saved.structure.appliedWaves)) &&
+      saved.applied?.enemies?.length === 4 && saved.applied.condition) captureUndo = saved;
   } catch { /* 损坏或不可用的回退记录不影响正常输入。 */ }
   updateCaptureConnection();
   let statusBusy = false, statusTimer = null;
@@ -365,6 +399,9 @@ function setupCapture() {
   };
   void configureCapture();
   document.addEventListener('visibilitychange', () => { void pollCaptureStatus(); });
+  $('#capture-auto').addEventListener('change', () => {
+    cancelPendingCapture('填入方式已改变，请重新抓取。'); synchronize(); updateCaptureConnection();
+  });
   $('#capture-target').addEventListener('change', () => { cancelPendingCapture('目标组已改变，请重新抓取。'); refreshCaptureTargets(); });
   $('#capture-current').addEventListener('click', async () => {
     if (!updateCaptureConnection()) return;
@@ -375,20 +412,43 @@ function setupCapture() {
   $('#capture-undo').addEventListener('click', () => {
     try {
       const input = readInput();
-      const { waveIndex, groupIndex, previous, applied } = captureUndo;
-      if (JSON.stringify(captureGroup(input, waveIndex, groupIndex)) !== JSON.stringify(applied)) {
-        throw new Error('目标组已有其他修改，未撤销，以免覆盖你的新输入。');
+      const backup = captureUndo;
+      if (!backup) return;
+      const { waveIndex, groupIndex, previous, applied } = backup;
+      if (backup.kind === 'reset') {
+        if (JSON.stringify(input.waves) !== JSON.stringify(backup.appliedWaves)) throw new Error('重置后敌军或条件已有其他修改，未撤销，以免覆盖你的新输入。');
+        input.waves = structuredClone(backup.previousWaves);
+      } else {
+        if (JSON.stringify(captureGroup(input, waveIndex, groupIndex)) !== JSON.stringify(applied)) {
+          throw new Error('目标组已有其他修改，未撤销，以免覆盖你的新输入。');
+        }
+        if (backup.structure) undoCaptureExpansion(input, backup.structure, waveIndex);
+        if (previous) {
+          input.waves[waveIndex].enemies.splice(groupIndex * 4, 4, ...previous.enemies);
+          input.waves[waveIndex].groupConditions[groupIndex] = previous.condition;
+        }
       }
-      input.waves[waveIndex].enemies.splice(groupIndex * 4, 4, ...previous.enemies);
-      input.waves[waveIndex].groupConditions[groupIndex] = previous.condition;
       stop(); restore(input);
-      captureUndo = null;
-      try { localStorage.removeItem(CAPTURE_BACKUP_KEY); } catch { /* 内存回退记录已移除。 */ }
+      saveCaptureUndo(null);
       $('#planner').dispatchEvent(new Event('input'));
-      $('#capture-target').value = `${waveIndex}:${groupIndex}`;
+      const select = $('#capture-target'), target = `${waveIndex}:${groupIndex}`;
+      select.value = [...select.options].some(option => option.value === target) ? target : select.options[select.options.length - 1].value;
       refreshCaptureTargets(); updateCaptureConnection();
-      captureFeedback(`已撤销第${waveIndex + 1}波第${groupIndex + 1}组的上次抓取。`);
+      $('#result-panel').innerHTML = '<p class="section-note">已撤销，请按当前输入重新计算。</p>';
+      captureFeedback(backup.kind === 'reset' ? '已撤销重置，恢复之前的行动敌军与条件。' : `已撤销第${waveIndex + 1}波第${groupIndex + 1}组的上次抓取。`);
     } catch (error) { captureFeedback(error.message, true); }
+  });
+  $('#reset-action').addEventListener('click', () => {
+    const input = readInput(), previousWaves = input.waves;
+    cancelPendingCapture(); stop();
+    input.waves = [{ enemies: Array.from({ length: 4 }, blankEnemy), groupConditions: [{}] }];
+    restore(input);
+    saveCaptureUndo({ kind: 'reset', previousWaves, appliedWaves: readInput().waves });
+    $('#planner').dispatchEvent(new Event('input'));
+    $('[data-wave="0"]').open = true;
+    $('#capture-target').value = '0:0'; refreshCaptureTargets(); updateCaptureConnection();
+    $('#result-panel').innerHTML = '<div class="empty-result"><h2>行动已重置</h2><p>从阶段1据点1重新抓取。卡牌、生命、库存和计算设置已保留。</p></div>';
+    captureFeedback('已重置为第一阶段第一组，资源与设置已保留；可点击“撤销重置”恢复。');
   });
   $('#capture-copy-script').addEventListener('click', async () => {
     try {

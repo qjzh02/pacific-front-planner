@@ -54,8 +54,8 @@ test('请求、读取、结果只按当前请求编号返回，不复用旧结�
     assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-a', requestId: 'request-c',
       snapshot: { ...snapshot, source: { ...snapshot.source, enemyPowerIncrease: -0.1 } } } })).status, 400);
     for (const source of [
-      { ...snapshot.source, ignoredEnemyPowerIncrease: 0.08 },
-      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncrease: 0.1 },
+      { ...snapshot.source, ignoredEnemyPowerIncrease: -0.08 },
+      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncrease: '0.1' },
     ]) {
       assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-a', requestId: 'request-c',
         snapshot: { ...snapshot, source } } })).status, 400);
@@ -85,10 +85,29 @@ test('接口接受四种增益减益条件和组合，拒绝非布尔开关', as
   });
 });
 
-test('快照入口拒绝未知提升比例、缺失舰种逐敌军比例和无法还原值，不覆盖待处理结果', async () => {
+test('接口接受通用全体舰种叠加和多层带入，仍拒绝非数值及不匹配的逐敌军比例', async () => {
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'general-rates' } });
+    await call('request', { body: { requestId: 'general-rates' } });
+    const accepted = { ...snapshot, source: { action: '测试', stage: 1, keypoint: 1,
+      enemyPowerIncrease: 0.5, enemyPowerIncreases: [{ type: 'destroyer', rate: 0.6 }],
+      ignoredEnemyPowerIncrease: 1.25, ignoredEnemyPowerIncreases: [{ type: 'destroyer', rate: 2.4 }] },
+      enemies: [300, 420, 300, 420].map((power, i) => ({ active: true, power, weaknesses: [], powerIncrease: i % 2 ? 1.1 : 0.5 })) };
+    const send = value => call('game', { game: true, body: { type: 'result', clientId: 'general-rates', requestId: 'general-rates', snapshot: value } });
+    for (const rate of [null, '0.5', -0.5, Infinity, NaN]) {
+      assert.equal((await send({ ...accepted, source: { ...accepted.source, enemyPowerIncrease: rate } })).status, 400);
+    }
+    assert.equal((await send({ ...accepted, enemies: accepted.enemies.map(enemy => ({ ...enemy, powerIncrease: 0.6 })) })).status, 400);
+    assert.equal((await (await call('status')).json()).result, null);
+    assert.equal((await send(accepted)).status, 200);
+    assert.deepEqual((await (await call('status')).json()).result.snapshot, accepted);
+  });
+});
+
+test('快照入口拒绝无效比例、缺失舰种逐敌军比例和无法还原值，不覆盖待处理结果', async () => {
   const api = globalThis.PacificFrontCapture;
   const invalid = [
-    { ...snapshot, source: { ...snapshot.source, enemyPowerIncrease: 0.5 } },
+    { ...snapshot, source: { ...snapshot.source, enemyPowerIncrease: -0.5 } },
     { ...snapshot, source: { action: '测试', stage: 1, keypoint: 1, enemyPowerIncreases: [{ type: 'cruiser', rate: 0.12 }] } },
     { ...snapshot, source: { action: '测试', stage: 1, keypoint: 1, enemyPowerIncreases: [{ type: 'cruiser', rate: 0.16 }] } },
     { ...snapshot, enemies: snapshot.enemies.map(enemy => ({ ...enemy, power: 7 })) },
@@ -123,7 +142,7 @@ test('拒绝无效结果及超大请求，游戏页接管后拒绝旧连接', as
   });
 });
 
-test('接口校验舰种提升来源，保留有效记录并拒绝无效及未核对叠加', async () => {
+test('接口校验舰种提升来源，保留有效记录并拒绝无效数据', async () => {
   await withRelay(async call => {
     await call('game', { game: true, body: { type: 'connect', clientId: 'client-boost' } });
     await call('request', { body: { requestId: 'request-boost' } });
@@ -146,9 +165,9 @@ test('接口校验舰种提升来源，保留有效记录并拒绝无效及未�
     await call('request', { body: { requestId: 'request-restored-types' } });
     for (const source of [
       { ...typed.source, ignoredEnemyPowerIncreases: [boost] },
-      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [{ ...boost, rate: 0.12 }] },
+      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [{ ...boost, rate: -0.12 }] },
       { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost, boost] },
-      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost], ignoredEnemyPowerIncrease: 0.08, enemyPowerIncrease: 0.16 },
+      { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncreases: [boost], ignoredEnemyPowerIncrease: -0.08, enemyPowerIncrease: 0.16 },
     ]) {
       assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-boost', requestId: 'request-restored-types',
         snapshot: { ...snapshot, source } } })).status, 400);
@@ -159,7 +178,7 @@ test('接口校验舰种提升来源，保留有效记录并拒绝无效及未�
   });
 });
 
-test('接口接受两层带入及带入8%与潜艇区域16%，拒绝三层重叠', async () => {
+test('接口接受多层带入与区域，舰种来源仍要求逐敌军比例', async () => {
   await withRelay(async call => {
     await call('game', { game: true, body: { type: 'connect', clientId: 'client-stacked' } });
     const carriedSource = { action: '测试行动', stage: 1, keypoint: 1, ignoredEnemyPowerIncrease: 0.08,
@@ -211,6 +230,30 @@ test('接口接受岸防炮提升来源并保持每个敌军的区域比例', as
     enemies: [177, 187, 204, 201].map((power, i) => ({ ...snapshot.enemies[i], power, powerIncrease: i < 3 ? 0.16 : 0 })) };
     assert.equal((await call('game', { game: true, body: { type: 'result', clientId: 'client-coastal', requestId: 'request-coastal', snapshot: accepted } })).status, 200);
     assert.deepEqual((await (await call('status')).json()).result.snapshot, accepted);
+  });
+});
+
+test('接口接受合并后的双16%及水雷来源，拒绝无效比例和非规范重复记录', async () => {
+  await withRelay(async call => {
+    await call('game', { game: true, body: { type: 'connect', clientId: 'double16' } });
+    for (const type of ['destroyer', 'naval_mine']) for (const key of ['ignoredEnemyPowerIncreases', 'enemyPowerIncreases']) {
+      const requestId = `${type}-${key}`.replaceAll('_', '-');
+      assert.equal((await call('request', { body: { requestId } })).status, 200);
+      const source = { action: '测试', stage: 1, keypoint: 1, [key]: [{ type, rate: 0.32 }] };
+      const accepted = { ...snapshot, source, enemies: snapshot.enemies.map(enemy => ({ ...enemy,
+        power: key === 'enemyPowerIncreases' ? 132 : 100, powerIncrease: key === 'enemyPowerIncreases' ? 0.32 : 0 })) };
+      const send = value => call('game', { game: true, body: { type: 'result', clientId: 'double16', requestId, snapshot: value } });
+      const invalid = [
+        { ...source, [key]: [{ type, rate: -0.48 }] },
+        { ...source, [key]: [{ type, rate: 0.16 }, { type, rate: 0.16 }] },
+        { ...source, ignoredEnemyPowerIncrease: -0.08 },
+        { ...source, [key === 'enemyPowerIncreases' ? 'ignoredEnemyPowerIncreases' : 'enemyPowerIncreases']: [{ type, rate: -0.16 }] },
+      ];
+      for (const source of invalid) assert.equal((await send({ ...accepted, source })).status, 400);
+      assert.equal((await (await call('status')).json()).result, null);
+      assert.equal((await send(accepted)).status, 200);
+      assert.deepEqual((await (await call('status')).json()).result.snapshot, accepted);
+    }
   });
 });
 

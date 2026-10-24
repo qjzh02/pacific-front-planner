@@ -18,7 +18,7 @@ function context(input, catalog, itemCatalog) {
     check(!source?.enemyPowerIncreases || enemy.powerIncrease !== undefined,
       '本组旧采集数据缺少每个敌军的区域增益，请重新采集后计算。');
     const powerIncrease = enemy.powerIncrease ?? source?.enemyPowerIncrease ?? 0;
-    check([0, 0.08, 0.16].includes(powerIncrease), `敌军${index + 1}区域战力增益无效或比例尚未核对。`);
+    check(number(powerIncrease, 0, Number.MAX_VALUE), `敌军${index + 1}区域战力增益必须是有效的非负数。`);
     const basePower = powerIncrease ? Math.round(enemy.power / (1 + powerIncrease)) : enemy.power;
     check(!powerIncrease || (Number.isInteger(enemy.power) && Math.round(basePower * (1 + powerIncrease)) === enemy.power),
       `敌军${index + 1}显示战力无法还原整数原战力，请核对输入或重新采集。`);
@@ -124,7 +124,7 @@ function positionResult(position, left, current, right, ctx, explain = false, sc
   const debuffMultiplier = 1 - ((left?.debuffs[2] ?? 0) + (current?.debuffs[1] ?? 0) + (right?.debuffs[0] ?? 0));
   const increased = enemy.powerIncrease > 0 && debuffMultiplier < 1;
   // 增益和各来源减益均按原战力加算；只保留已实测组合的四舍五入，其余沿用所选取整设置。
-  const calibrated = increased && enemy.powerIncrease === 0.16 && Math.abs(debuffMultiplier - 0.8) < 1e-8;
+  const calibrated = increased && Math.abs(enemy.powerIncrease - 0.16) < 1e-8 && Math.abs(debuffMultiplier - 0.8) < 1e-8;
   const enemyRaw = increased ? enemy.basePower * (debuffMultiplier + enemy.powerIncrease) : enemy.power * debuffMultiplier;
   const ownPower = ctx.model.rounding === 'conservative' ? Math.floor(ownRaw + 1e-8) : ownRaw;
   const enemyPower = calibrated ? Math.round(enemyRaw) : ctx.model.rounding === 'conservative' ? Math.ceil(enemyRaw - 1e-8) : enemyRaw;

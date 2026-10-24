@@ -84,6 +84,11 @@ class ItemCatalogTests(unittest.TestCase):
         self.assertEqual(samples["mixed_submarine"]["base"], 139)
         self.assertEqual(samples["mixed_submarine"]["displayed"], 172)
         self.assertIn("enemy_power_increase_capture_stacking", rules["rule_sources"]["user_confirmed"])
+        sample = rules["rule_sources"]["user_confirmed_carried_global_16"]
+        self.assertEqual(sample["base"], [145, 152, 165, 142])
+        self.assertEqual(sample["displayed"], [168, 176, 191, 165])
+        self.assertEqual(sample["rate"], 0.16)
+        self.assertEqual([int(base * 1.16 + 0.5) for base in sample["base"]], sample["displayed"])
 
     def test_special_item_effects(self):
         items = {key: json.loads(value) for key, value in self.connection.execute(

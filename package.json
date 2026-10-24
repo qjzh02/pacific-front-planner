@@ -1,6 +1,6 @@
 {
   "name": "pacific-front-planner",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "战舰世界太平洋战线本地阵容规划器",
   "type": "module",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test --test-isolation=none solver.test.mjs capture-relay.test.mjs action-regression.test.mjs",
+    "test": "node --test --test-isolation=none solver.test.mjs capture-relay.test.mjs capture-layout.test.mjs action-regression.test.mjs",
     "test:browser": "node --test --test-isolation=none capture.test.mjs"
   }
 }

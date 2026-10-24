@@ -78,6 +78,45 @@ test('a budget ending during repair preserves an already completed better plan',
   assert.ok(Object.values(result.remainingInventory).every(quantity => quantity >= 0));
 });
 
+test('general regional rates use base power in evaluation, exact/bounded search and async action', async () => {
+  for (const [rate, displayed, afterDebuff] of [[0.12, 56, 46], [0.48, 74, 64], [1.25, 113, 103]]) {
+    const input = request(['missouri'], {}, { model: { rounding: 'conservative' } });
+    input.enemies = input.enemies.map((enemy, i) => ({ ...enemy, active: i === 0, power: displayed, powerIncrease: rate,
+      weaknesses: ['debuff_concentric_target'] }));
+    assert.equal(evaluate([unit('missouri'), null, null, null], input).positions[0].enemyBasePower, 50);
+    assert.equal(evaluate([unit('missouri'), null, null, null], input).positions[0].enemyPower, afterDebuff);
+    for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+      assert.equal(solve(input, catalog, items, options).positions[0].enemyPower, afterDebuff);
+      const action = await solver.solveActionAsync({ ...input, waves: [{ enemies: input.enemies }] }, catalog, items,
+        { ...options, scheduler: async () => {} });
+      assert.equal(action.waves[0].groups[0].positions[0].enemyPower, afterDebuff);
+    }
+  }
+});
+
+test('two regional16 boosts retain32 and debuff the original power in evaluation, search and action', async () => {
+  const input = request(['missouri'], {}, { model: { rounding: 'conservative' } });
+  input.enemies = input.enemies.map((enemy, i) => ({ ...enemy, active: i === 0, power: 132, powerIncrease: 0.32,
+    weaknesses: ['debuff_concentric_target'] }));
+  input.conditions = { captureSource: { enemyPowerIncreases: [{ type: 'destroyer', rate: 0.32 }] } };
+  const original = structuredClone(input);
+  const evaluated = evaluate([unit('missouri'), null, null, null], input);
+  assert.equal(evaluated.positions[0].enemyBasePower, 100);
+  assert.equal(evaluated.positions[0].enemyPower, 112);
+  assert.equal(evaluated.positions[0].enemyPowerRoundingAssumed, true);
+  assert.equal(evaluate([null, null, null, null], input).positions[0].enemyPower, 132);
+  for (const options of [{}, { exactLimit: 0, beamWidth: 300 }]) {
+    assert.equal(solve(input, catalog, items, options).positions[0].enemyPower, 112);
+    const actionInput = { ...input, waves: [{ enemies: input.enemies, groupConditions: [input.conditions] }] };
+    for (const result of [solveAction(actionInput, catalog, items, options),
+      await solver.solveActionAsync(actionInput, catalog, items, { ...options, scheduler: async () => {} })]) {
+      assert.equal(result.waves[0].groups[0].positions[0].enemyPower, 112);
+      assert.equal(result.waves[0].groups[0].positions[0].enemyBasePower, 100);
+    }
+  }
+  assert.deepEqual(input, original);
+});
+
 test('regional enemy increase and one ordinary debuff reproduce the four destroyer screenshot', () => {
   const ids = ['san_diego', 'johnston', 'benson', 'helldiver_essex'];
   const input = request(ids, {}, { model: { rounding: 'conservative' } });
@@ -91,6 +130,8 @@ test('regional enemy increase and one ordinary debuff reproduce the four destroy
   assert.deepEqual(result.positions.map(p => p.win), [false, true, true, true]);
   assert.equal(result.wins, 3);
   assert.deepEqual(result.positions.map(p => p.enemyBasePower), [138, 141, 137, 137]);
+  input.enemies.forEach(enemy => { enemy.powerIncrease = 0.12 + 0.02 + 0.02; });
+  assert.deepEqual(evaluate(ids.map(id => unit(id)), input).positions.map(p => p.enemyPower), [132, 164, 132, 132]);
 });
 
 test('enemy regional metadata affects search and action, rejects stale captures and invalid reconstruction', () => {
@@ -114,7 +155,7 @@ test('enemy regional metadata affects search and action, rejects stale captures 
   }
   weakOnly.waves = [{ enemies: weakOnly.enemies }];
   assert.equal(solveAction(weakOnly, modified, items).wins, 0);
-  for (const powerIncrease of ['0.16', -0.16, 0.12]) {
+  for (const powerIncrease of ['0.16', -0.16, NaN, Infinity]) {
     assert.throws(() => evaluate([unit('john_d_ford'), null, null, null],
       { ...weakOnly, enemies: weakOnly.enemies.map(e => ({ ...e, powerIncrease })) }), /敌军.*增益/);
   }

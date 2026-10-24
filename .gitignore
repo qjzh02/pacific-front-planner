@@ -28,6 +28,9 @@ Thumbs.db
 *capture-backup*
 html/*
 !html/README.md
+!html/关键区域-双驱逐提升.txt
+!html/关键区域-水雷.txt
+!html/关键区域-提升比例核对.txt
 !html/关键据点1.txt
 !html/关键据点-舰种提升重复.txt
 !html/关键据点2.txt

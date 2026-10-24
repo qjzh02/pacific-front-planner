@@ -163,7 +163,16 @@
       },
       "scope": "仅校准8%与16%加算及采集还原；三层同目标及减益取整不在本次确认范围"
     },
-    "model_assumptions": {},
+    "model_assumptions": {
+      "general_enemy_capture": {
+        "date": "2026-10-24",
+        "basis": "用户要求移除比例与层数白名单；采用已确认的增益加算公式",
+        "rate_policy": "finite_nonnegative",
+        "stacking": "additive",
+        "capture_rounding": "nearest_integer_with_roundtrip_validation",
+        "unmeasured_combinations": "模型外推，不声明为新实测；不扩展战斗减益或我方取整校准"
+      }
+    },
     "in_game_rules_read": [
       "random_offset_min",
       "random_offset_max",
@@ -186,7 +195,26 @@
       "buff_stacking",
       "rounding",
       "rounding_stage"
-    ]
+    ],
+    "user_confirmed_carried_global_16": {
+      "date": "2026-10-24",
+      "source": "sources/enemy-carried-global-16.json",
+      "base": [
+        145,
+        152,
+        165,
+        142
+      ],
+      "displayed": [
+        168,
+        176,
+        191,
+        165
+      ],
+      "rate": 0.16,
+      "formula": "round(base_power * 1.16)",
+      "scope": "核对全体16%带入与整数显示取整；不扩展我方或减益取整实测范围"
+    }
   },
   "effect_types": [
     {

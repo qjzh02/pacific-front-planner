@@ -34,13 +34,17 @@
 
 只从区域“禁用的单位类型”栏目识别图标，转换为 `allowedTypes` 的补集；飞机使用 `card_ship_plane-*.webp` 命名。采集忽略带入、指定和全域中的舰种与道具禁用，“全域”不作用于当前组。
 
-单独带入敌方战力＋8%的整数值按 `round(显示值 / 1.08)` 还原，必须有加成标记且重新加成可复现显示值；来源保存 `ignoredEnemyPowerIncrease`。全体带入8%与舰种16%按1.24还原；混合区域舰种16%时先还原原战力，再只保留区域比例。来源可同时记录全体与舰种带入，按每位敌军匹配，禁止同目标三层、区域全体与带入叠加及未核对比例，不推及减益或我方取整规则。
+采集解析与校验共用 `validPowerRate`，接受有限非负比例，不使用比例或层数白名单。同舰种有效行、多个全体栏目及带入／区域均按幅度加算，`typedBoosts` 保留原始行并在过滤带入失效行后合并；支持同栏多行、分栏和多个带入body，区域仍只允许单个header。来源数组每舰种一条合计比例，接口拒绝未规范化的重复条目，不再二次加算。
 
-区域舰种提升按敌军卡面类型保存每位敌军的 `powerIncrease`，以原战力计算减益；无减益保留显示值，旧舰种采集缺少该字段应重新采集。带入舰种＋16%只还原匹配者，来源保存 `ignoredEnemyPowerIncreases`。潜艇与岸防炮加入敌军和敌方舰种增益识别，不扩展我方卡牌、允许类型或禁用列表；岸防炮独立取整没有新增实测。
+先用全部增幅还原整数原战力并复算显示值，再只保留区域增幅。逐敌军 `powerIncrease` 为区域全体加匹配舰种比例，舰种来源不得缺失该字段；旧全体来源可回退来源比例但仍须可还原。未知图标、缺失或无效比例、名称不一致、未知内容、已受我方减益及无法复算的战力仍拒绝；指定与全域继续忽略。
 
-不同舰种提升允许同栏多行或多个分栏，`typedBoosts` 的舰种去重集合须跨所有section共用，不按栏目数量拒绝合法输入。带入多body也按舰种去重，区域仍只允许单个区域header。不同舰种各自匹配敌军，不能解释成同一目标的多层叠加；人工样本仅验证解析和既有还原，不新增取整实测结论。
+敌军类型含潜艇、岸防炮、水雷，不扩展我方卡牌、允许类型或区域禁用列表。全体16%带入的匿名实测存 `sources/enemy-carried-global-16.json`，通用组合外推单列 `rule_sources.model_assumptions.general_enemy_capture`；未提供独立原战力的人工样本不能写成新实战校准，不扩展我方与减益取整实测。
 
-区域四种效果条件统一由映射表解析：增益／减益−50%为Reduced，−100%为Disabled。FLAGS校验布尔值，合并完整复制四个开关；拒绝同类重复、其他比例、缺失及未知内容，带入／指定／全域仍忽略。0／8%／16%集合由POWER_RATES共用，校验不完整或无法还原的快照必须在接口／合并前拒绝。
+自动定位统一用 `mergeAutoSnapshot`，`captureAuto` 旧输入默认true、显式false保留手动方式。累计据点号按来源偏移定位，不直接减1或固定每阶段5组取模；阶段边界不明、来源错位／重复或混用行动须拒绝并提示顺序采集或手动方式。最多6波、每波5组；重复采集更新原位置，扩容保留既有资源与条件。
+
+重置行动只清空waves并缩至一波一组，保留资源和设置，终止Worker及pendingCapture。用原回退键保存 `kind=reset` 的前后waves，撤销不覆盖资源新修改。自动扩容撤销保存 `structure.beforeWaves/appliedWaves`，仅移除未被修改的新增尾部结构，保护原组和新增区域的手动修改；兼容旧单组备份。文件与实时抓取共用路径，迟到结果不能写回重置后的行动。
+
+区域四种效果条件统一由映射表解析：增益／减益−50%为Reduced，−100%为Disabled。FLAGS校验布尔值，合并完整复制四个开关；拒绝同类重复、其他比例、缺失及未知内容，带入／指定／全域仍忽略。不完整或无法还原的快照必须在接口／合并前拒绝。
 
 轮询保持单个自调setTimeout，按未连接5秒、空闲连接2秒、后台20秒、等待抓取250毫秒降频，可见时立即检查，UI只在状态变化时更新。游戏页心跳可见1.5秒、后台3秒，不在空闲心跳解析DOM，保留90秒有效期与跨页抓取。修改接口校验后重启服务并重新配对。
 
@@ -50,7 +54,7 @@
 python build_database.py
 python test_database.py
 python test_release.py
-node --test --test-isolation=none solver.test.mjs capture-relay.test.mjs action-regression.test.mjs
+node --test --test-isolation=none solver.test.mjs capture-relay.test.mjs capture-layout.test.mjs action-regression.test.mjs
 ```
 
 页面和采集修改还应运行 `capture.test.mjs` 或验证对应浏览器交互。`start.ps1` 保持UTF-8带BOM，兼容Windows PowerShell 5.1。Pull Request描述问题、最终行为和实际验证结果。

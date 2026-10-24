@@ -18,7 +18,7 @@ class FixtureParser(HTMLParser):
             if name == "class":
                 assert all(re.fullmatch(r"_[A-Za-z0-9]+_public_1", c) for c in value.split()), value
             elif name == "src":
-                assert re.fullmatch(r"/assets/(?:icon_(?:battleship|cruiser|destroyer|submarine)_standard|card_ship_(?:plane|coastal_artillery))-public\.webp", value), value
+                assert re.fullmatch(r"/assets/(?:icon_(?:battleship|cruiser|destroyer|submarine)_standard|card_ship_(?:plane|coastal_artillery|naval_mine))-public\.webp", value), value
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
@@ -65,7 +65,7 @@ class PublicReleaseTests(unittest.TestCase):
 
     def test_capture_fixtures_have_only_artificial_markup(self):
         files = list((ROOT / "html").glob("*.txt")) + list((ROOT / "html").glob("*.html"))
-        self.assertEqual(len(files), 20)
+        self.assertEqual(len(files), 23)
         for path in files:
             content = path.read_text(encoding="utf-8")
             self.assertLess(len(content), 6000)
@@ -84,6 +84,11 @@ class PublicReleaseTests(unittest.TestCase):
         stacking_sources = catalog["rule_sources"]["user_confirmed_enemy_capture_stacking"]["sources"]
         self.assertEqual(stacking_sources, ["sources/enemy-capture-stacking.json"])
         self.assertEqual(json.loads((ROOT / stacking_sources[0]).read_text(encoding="utf-8"))["kind"], "public_transcription")
+        confirmed = catalog["rule_sources"]["user_confirmed_carried_global_16"]
+        self.assertEqual(confirmed["source"], "sources/enemy-carried-global-16.json")
+        self.assertEqual(json.loads((ROOT / confirmed["source"]).read_text(encoding="utf-8"))["kind"], "public_transcription")
+        assumptions = catalog["rule_sources"]["model_assumptions"]["general_enemy_capture"]
+        self.assertEqual(assumptions["rate_policy"], "finite_nonnegative")
         fixture = json.loads((ROOT / "test-fixtures/action-resource-regression.json").read_text(encoding="utf-8"))
         self.assertEqual(fixture["kind"], "synthetic")
         self.assertTrue(all(card["id"].startswith("test_card_") for card in fixture["catalog"]["cards"]))
